@@ -1,0 +1,1627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pipeline Manager — Will Pancoast</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #FAFBFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    /* Prevent zoom on input focus on iOS */
+    @media screen and (max-width: 768px) {
+      input, select, textarea { font-size: 16px !important; }
+      table { font-size: 12px !important; }
+      /* Make tables horizontally scrollable */
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script>
+    window.addEventListener('DOMContentLoaded', function() {
+      setTimeout(function() {
+        if (typeof React === 'undefined' || typeof ReactDOM === 'undefined') {
+          document.getElementById('root').innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif"><h2 style="color:#C62828">Could not load app</h2><p style="color:#666;margin-top:12px">Make sure you are connected to the internet and try refreshing.</p></div>';
+        }
+      }, 3000);
+    });
+  </script>
+  <script type="text/babel">
+    const { useState, useMemo, useEffect } = React;
+
+    const initialAccounts = [
+      { id: 1, status: "A", name: "Coatesville SD - South Brandywine", type: "K-12", amount: 70000, likelihood: 0.99, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 2, status: "A", name: "Daylesford Abbey", type: "Private", amount: 40000, likelihood: 0.99, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 3, status: "A", name: "CCIU - Gordon", type: "K-12", amount: 300000, likelihood: 0.90, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 4, status: "A", name: "CCIU - Pickering", type: "K-12", amount: 50000, likelihood: 0.90, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 5, status: "A", name: "Avon Grove SD - HS Library", type: "K-12", amount: 50000, likelihood: 0.90, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 6, status: "A", name: "Upper Darby - Stonehurst", type: "K-12", amount: 120000, likelihood: 0.90, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 7, status: "A", name: "Owen J. Roberts SD - District Offices", type: "K-12", amount: 400000, likelihood: 0.85, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 8, status: "A", name: "Coatesville SD - High School", type: "K-12", amount: 200000, likelihood: 0.85, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 9, status: "A", name: "Unionville - Chadds Ford SD", type: "K-12", amount: 200000, likelihood: 0.85, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 10, status: "A", name: "Olan Thomas Park", type: "Municipal", amount: 130000, likelihood: 0.95, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 11, status: "A", name: "Springfield Township", type: "Municipal", amount: 180000, likelihood: 0.85, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 12, status: "A", name: "Howard R. Young Correctional", type: "Private", amount: 50000, likelihood: 0.99, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 13, status: "B", name: "Marple Newtown SD - Worrall", type: "K-12", amount: 350000, likelihood: 0.75, contact: "Jake Gallagher", contact2: "", phone: "", email: "", progress: "", notes: "Recently heard that this project is going forward. Will likely be an overlay" },
+      { id: 14, status: "B", name: "Oxford Area SD", type: "K-12", amount: 220000, likelihood: 0.75, contact: "Roger Madron", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 15, status: "B", name: "Red Clay CSD - McKean High School", type: "K-12", amount: 300000, likelihood: 0.75, contact: "Bryan Hutchinson", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 16, status: "B", name: "Phoenixville Area School District - Barley", type: "K-12", amount: 150000, likelihood: 0.70, contact: "Phil Vontor", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 17, status: "B", name: "Owen J. Roberts - Middle School", type: "K-12", amount: 300000, likelihood: 0.70, contact: "Mike Shellgren / Aaron Rothrock", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 18, status: "B", name: "William Penn SD", type: "K-12", amount: 300000, likelihood: 0.60, contact: "Darnell Deans", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 19, status: "B", name: "Red Clay CSD - Meadowood K-Center", type: "K-12", amount: 200000, likelihood: 0.60, contact: "Bryan Hutchinson", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 20, status: "B", name: "Octorara SD", type: "K-12", amount: 300000, likelihood: 0.45, contact: "McClure", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 21, status: "B", name: "Wallingford Swarthmore SD", type: "K-12", amount: 300000, likelihood: 0.45, contact: "Robert Maloney", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 22, status: "B", name: "Rose Tree Media School District", type: "K-12", amount: 150000, likelihood: 0.70, contact: "Mike Nolan", contact2: "", phone: "", email: "", progress: "", notes: "Potential for replacements at Glenwood, Rose Tree, Springton Lake, Penncrest HS" },
+      { id: 23, status: "B", name: "Jacobs Engineering", type: "Municipal", amount: 180000, likelihood: 0.75, contact: "Frank DiPietrapaul", contact2: "", phone: "", email: "", progress: "", notes: "Boiler Building" },
+      { id: 24, status: "B", name: "State of Delaware", type: "Municipal", amount: 120000, likelihood: 0.70, contact: "Becker Morgan", contact2: "", phone: "", email: "", progress: "", notes: "Likely 1 or 2 small state projects that I will be specified for" },
+      { id: 25, status: "B", name: "Radnor Township", type: "Municipal", amount: 90000, likelihood: 0.65, contact: "Ricky Foster / Steve Norcini / Ben Wagner", contact2: "", phone: "", email: "", progress: "", notes: "Dezigns Construction and Practical Energy Solutions" },
+      { id: 26, status: "B", name: "Upper Chichester Township", type: "Municipal", amount: 200000, likelihood: 0.65, contact: "Jim Putman", contact2: "", phone: "", email: "", progress: "", notes: "Delivered solid reports with budget numbers" },
+      { id: 27, status: "B", name: "Omni Cable", type: "Private", amount: 380000, likelihood: 0.70, contact: "Mattie Siegfried", contact2: "", phone: "", email: "", progress: "", notes: "Delivered very solid reports with budget numbers" },
+      { id: 28, status: "B", name: "Hudson Village Car-Wash", type: "Private", amount: 70000, likelihood: 0.75, contact: "Becker Morgan", contact2: "", phone: "", email: "", progress: "", notes: "Becker Morgan Spec. Follow up with people I sent pricing to" },
+      { id: 29, status: "B", name: "Kimberly Clark", type: "Private", amount: 200000, likelihood: 0.50, contact: "John Duffy / Nick Saitz", contact2: "", phone: "", email: "", progress: "", notes: "Need to talk to Jeff Hutter (Plant Manager) or Robert Barkhau (Senior Engineer)" },
+      { id: 30, status: "B", name: "Radnor House", type: "Private", amount: 300000, likelihood: 0.45, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 31, status: "B", name: "Delaware River and Bay Authority", type: "Utility", amount: 20000, likelihood: 0.60, contact: "", contact2: "", phone: "610 527 4165", email: "", progress: "", notes: "They have a Garland roof and I have delivered some very good Garland reports / Budget Numbers. Condo assoc." },
+      { id: 32, status: "B", name: "AMTRAK - Bear, DE", type: "Utility", amount: 300000, likelihood: 0.50, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "Lisa Lemonick job. Need to follow up. Potentially reach out to AMTRAK" },
+      { id: 33, status: "B", name: "Chester Water Authority", type: "Utility", amount: 120000, likelihood: 0.45, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 34, status: "B", name: "Kennett Consolidated SD", type: "K-12", amount: 400000, likelihood: 0.55, contact: "Mark Tracy", contact2: "", phone: "", email: "", progress: "", notes: "Going to happen in 2026 or 2027" },
+      { id: 35, status: "B", name: "Tredyffrin Township", type: "K-12", amount: 150000, likelihood: 0.55, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 36, status: "B", name: "Concord Township Salt Shed", type: "Municipal", amount: 70000, likelihood: 0.60, contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" },
+      { id: 37, status: "C", name: "Delaware County Intermediate Unit", type: "Federal", amount: null, likelihood: null, contact: "Jason Glass", contact2: "Lou DeDomenico", phone: "", email: "", progress: 8, notes: "" },
+      { id: 38, status: "C", name: "Dover AFB", type: "Federal", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 7, notes: "" },
+      { id: 39, status: "C", name: "Beebe Healthcare", type: "Healthcare", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 7, notes: "" },
+      { id: 40, status: "C", name: "Bayhealth", type: "Healthcare", amount: null, likelihood: null, contact: "Krystal Connors", contact2: "", phone: "", email: "", progress: 6, notes: "75 WW Treatment Plants, 200 Wells. Virginia Einsbrey is the person. Just sent a very detailed email." },
+      { id: 41, status: "C", name: "Main Line Health", type: "Healthcare", amount: null, likelihood: null, contact: "Laurie Anseth", contact2: "Lisa Schmitter, David Ancock, Douglas Williams", phone: "", email: "", progress: 6, notes: "" },
+      { id: 42, status: "C", name: "Christiana Care", type: "Healthcare", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 5, notes: "" },
+      { id: 43, status: "C", name: "Nemours Children's Health", type: "Healthcare", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 4, notes: "" },
+      { id: 44, status: "C", name: "University of Delaware", type: "Higher Ed", amount: null, likelihood: null, contact: "Darren Miller", contact2: "Brian C", phone: "", email: "", progress: 8, notes: "" },
+      { id: 45, status: "C", name: "Penn State Brandywine", type: "Higher Ed", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: null, notes: "" },
+      { id: 46, status: "C", name: "Widener", type: "Higher Ed", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: null, notes: "" },
+      { id: 47, status: "C", name: "Great Valley SD", type: "K-12", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 7, notes: "" },
+      { id: 48, status: "C", name: "Ridley School District", type: "K-12", amount: null, likelihood: null, contact: "John Tsafos", contact2: "", phone: "", email: "", progress: 6, notes: "" },
+      { id: 49, status: "C", name: "Downingtown School District", type: "K-12", amount: null, likelihood: null, contact: "Chris Stefani", contact2: "", phone: "", email: "", progress: 6, notes: "" },
+      { id: 50, status: "C", name: "Delaware County", type: "Municipal", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 7, notes: "" },
+      { id: 51, status: "C", name: "Chester County", type: "Municipal", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 6, notes: "" },
+      { id: 52, status: "C", name: "Wilmington Housing Authority", type: "Municipal", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 5, notes: "" },
+      { id: 53, status: "C", name: "Wawa", type: "Private", amount: null, likelihood: null, contact: "Mike Civera", contact2: "", phone: "", email: "", progress: 7, notes: "" },
+      { id: 54, status: "C", name: "Boeing", type: "Private", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 6, notes: "" },
+      { id: 55, status: "C", name: "DuPont", type: "Private", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 6, notes: "" },
+      { id: 56, status: "C", name: "Vanguard", type: "Private", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 6, notes: "" },
+      { id: 57, status: "C", name: "Purdue Farms", type: "Private", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 5, notes: "" },
+      { id: 58, status: "C", name: "Herr's Potato Chips", type: "Private", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 5, notes: "" },
+      { id: 59, status: "C", name: "QVC", type: "Private", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 5, notes: "" },
+      { id: 60, status: "C", name: "Astra Zeneca", type: "Private", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 4, notes: "" },
+      { id: 61, status: "C", name: "Johnson Matthey", type: "Private", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 4, notes: "" },
+      { id: 62, status: "C", name: "American Airlines", type: "Private", amount: null, likelihood: null, contact: "Terrance McLaughlin", contact2: "", phone: "610 362 2132 / 267 286 5673", email: "", progress: 6, notes: "" },
+      { id: 63, status: "C", name: "J.P. Morgan", type: "Private", amount: null, likelihood: null, contact: "Lisa Lemonick", contact2: "", phone: "", email: "", progress: 5, notes: "" },
+      { id: 64, status: "C", name: "Dunwoody Village", type: "Private", amount: null, likelihood: null, contact: "Brian Worthington", contact2: "", phone: "", email: "Bworthington@dunwoody.org", progress: 6, notes: "" },
+      { id: 65, status: "C", name: "Delaware River and Bay Authority", type: "Utility", amount: null, likelihood: null, contact: "Joseph Gibbons", contact2: "James Cellini", phone: "", email: "", progress: 8, notes: "" },
+      { id: 66, status: "C", name: "Artesian Water", type: "Utility", amount: null, likelihood: null, contact: "Virginia Einsbrey - Ops Supply Oversight", contact2: "Stanley Siegfried - VP of WW Ops", phone: "", email: "", progress: 7.5, notes: "Spoke with him multiple times. Had a great conversation the first time, but then he got very angry with me for calling too much the second time." },
+      { id: 67, status: "C", name: "American Water", type: "Utility", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 6, notes: "Pennoni is doing work with them and Lisa Lemonick seems to think we have a chance to install metal coping." },
+      { id: 68, status: "C", name: "Port of Wilmington", type: "Utility", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 6, notes: "Stopped by Dunwoody front desk. The ladies were very nice, told me Brian was the person to talk to." },
+      { id: 69, status: "C", name: "PECO", type: "Utility", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 5, notes: "" },
+      { id: 70, status: "C", name: "Delmarva Power and Electric", type: "Utility", amount: null, likelihood: null, contact: "", contact2: "", phone: "", email: "", progress: 5, notes: "" },
+    ];
+
+    const initialProspects = [
+      { id: 1, name: "Neumann University", sector: "Higher Ed", address: "", phone: "610 361 5271", contact1: "Bill Leonard", contact2: "", email1: "leonardw@neumann.edu", email2: "", notes: [{"id": 1000, "text": "\"Race to Zero Waste\" online article that quoted Bill Leonard. Focused on eliminating plastic bottles on campus, lowering CO2", "date": "2026-01-01", "timestamp": "Imported from ABC 2026"}], lastContacted: null },
+      { id: 2, name: "University of Delaware - Roof Replacements", sector: "Higher Ed", address: "", phone: "302 274 9476 (tom)", contact1: "Tom Craig (Engineer) and Roger Uhline", contact2: "", email1: "tcraig@udel.edu", email2: "", notes: [{"id": 2000, "text": "Office of Sustainability, Energy, and Engineering. Ted Socha is director", "date": "2023-07-24", "timestamp": "Imported from ABC 2026"}], lastContacted: "2023-07-24" },
+      { id: 3, name: "Delaware Tech. Community College", sector: "Higher Ed", address: "", phone: "302 540 4096", contact1: "Mark Devore", contact2: "", email1: "mark.devore@dtcc.edu", email2: "", notes: [], lastContacted: null },
+      { id: 4, name: "West Chester University", sector: "Higher Ed", address: "", phone: "610 436 2057", contact1: "Rick Zimmerman", contact2: "", email1: "rzimmerman2@wcupa.edu", email2: "", notes: [], lastContacted: null },
+      { id: 5, name: "Eastern University", sector: "Higher Ed", address: "", phone: "610 341 5914", contact1: "Tony Pattrico", contact2: "", email1: "apatricc@eastern.edu", email2: "", notes: [], lastContacted: null },
+      { id: 6, name: "Widener University", sector: "Higher Ed", address: "", phone: "610 499 1096", contact1: "Jim Pettus", contact2: "", email1: "jgpettus@widener.edu", email2: "", notes: [{"id": 6000, "text": "Sent email to Jim Pettus, following up on last voicemail. Asked him for an opportunity to look at any leaks that he might have.", "date": "2023-07-18", "timestamp": "Imported from ABC 2026"}], lastContacted: "2023-07-18" },
+      { id: 7, name: "Delaware State University", sector: "Higher Ed", address: "", phone: "302 363 2093", contact1: "Bernard Pratt", contact2: "", email1: "bpratt@desu.edu", email2: "", notes: [], lastContacted: null },
+      { id: 8, name: "Goldey Beacom College", sector: "Higher Ed", address: "", phone: "302 225 6235", contact1: "Meezie Foster", contact2: "", email1: "fosterm@bgc.edu", email2: "", notes: [], lastContacted: null },
+      { id: 9, name: "Haverford College", sector: "Higher Ed", address: "", phone: "610 896 1098", contact1: "Fern Hall", contact2: "", email1: "fhall@haverford.edu", email2: "", notes: [], lastContacted: null },
+      { id: 10, name: "Swarthmore", sector: "Higher Ed", address: "", phone: "610 328 8278", contact1: "Jim Adams", contact2: "", email1: "jadams3@swarthmore.edu", email2: "", notes: [], lastContacted: null },
+      { id: 11, name: "Lincoln University", sector: "Higher Ed", address: "", phone: "484 365 8061", contact1: "Amy Taylor", contact2: "", email1: "taylor-amy@aramark.com", email2: "", notes: [], lastContacted: null },
+      { id: 12, name: "Cabrini College", sector: "Higher Ed", address: "", phone: "610 902 1071", contact1: "Patty Smith", contact2: "", email1: "ps10344@cabrini.edu", email2: "", notes: [], lastContacted: null },
+      { id: 13, name: "Penn State Brandywine", sector: "Higher Ed", address: "", phone: "610 892 1282", contact1: "Anthony Montagna", contact2: "", email1: "amm58@psu.edu", email2: "", notes: [], lastContacted: null },
+      { id: 14, name: "Harcum College", sector: "Higher Ed", address: "", phone: "610 526 1644", contact1: "Nikolay Karpalo", contact2: "", email1: "nkarpalo@harcum.edu", email2: "", notes: [], lastContacted: null },
+      { id: 15, name: "Rosemont College", sector: "Higher Ed", address: "", phone: "610 527 0200 ext 2151", contact1: "Darlene Ryan", contact2: "", email1: "darlene.ryan@rosemont.edu", email2: "", notes: [], lastContacted: null },
+      { id: 16, name: "Ridley School District", sector: "K-12", address: "", phone: "610 731 8422", contact1: "John Tsafos", contact2: "", email1: "bcrouse@ridleysd.org", email2: "", notes: [], lastContacted: null },
+      { id: 17, name: "Garnet Valley School District", sector: "K-12", address: "", phone: "610 579 7484", contact1: "Bob Sanderson", contact2: "", email1: "sanderr@garnetvalley.org", email2: "", notes: [], lastContacted: null },
+      { id: 18, name: "Upper Darby School District", sector: "K-12", address: "", phone: "610 209 3737", contact1: "Tim Leaf and Chris Rossiter (ext37100)", contact2: "", email1: "tleaf@upperdarbysd.org", email2: "", notes: [], lastContacted: null },
+      { id: 19, name: "Haverford School District", sector: "K-12", address: "", phone: "610 853 5939", contact1: "JR Gugliemi", contact2: "", email1: "jgugliemi@havsd.net", email2: "", notes: [], lastContacted: null },
+      { id: 20, name: "Wallingford-Swarthmore SD", sector: "K-12", address: "", phone: "484 574 0247", contact1: "Peter Klabunde", contact2: "", email1: "pklabunde@wssd.org", email2: "", notes: [], lastContacted: null },
+      { id: 21, name: "Springfield SD", sector: "K-12", address: "", phone: "610 938 6039", contact1: "Peter Olson", contact2: "", email1: "peter.olsen@ssdcougars.org", email2: "", notes: [], lastContacted: null },
+      { id: 22, name: "Southeast Delco School District", sector: "K-12", address: "", phone: "610 637 1457", contact1: "Kevin Curry", contact2: "", email1: "kcurry@sedelco.org", email2: "", notes: [], lastContacted: null },
+      { id: 23, name: "Penn Delco School District", sector: "K-12", address: "", phone: "610 497 6300 ext 8600", contact1: "Brian Datte", contact2: "", email1: "bdatte@pdsd.org", email2: "", notes: [], lastContacted: null },
+      { id: 24, name: "Radnor Township SD", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 25, name: "Interboro School District", sector: "K-12", address: "", phone: "610 461 6700 ext 1118", contact1: "Bill Galloway", contact2: "", email1: "William.Galloway@interborosd.com", email2: "", notes: [], lastContacted: null },
+      { id: 26, name: "Octorara School District", sector: "K-12", address: "", phone: "610 593 8238", contact1: "Jim Durborow", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 27, name: "Marple Newtown SD", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 28, name: "Rose Tree Media SD", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 29, name: "Chichester SD", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 30, name: "Chester-Upland SD", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 31, name: "William Penn SD", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 32, name: "Kennett Consolidated School District", sector: "K-12", address: "", phone: "610 444 6600 (o) 610 960 1175 (m)", contact1: "David Brice", contact2: "", email1: "gwolhafe@kcsd.org", email2: "", notes: [], lastContacted: null },
+      { id: 33, name: "Tredyffrin Easttown School District", sector: "K-12", address: "", phone: "610 240 1650", contact1: "Colm Kelly", contact2: "", email1: "Kellyc@tesd.com", email2: "", notes: [], lastContacted: null },
+      { id: 34, name: "Twin Valley School District", sector: "K-12", address: "", phone: "610 286 1636", contact1: "Scott Haddock", contact2: "", email1: "shaddock@tvsd.org", email2: "", notes: [], lastContacted: null },
+      { id: 35, name: "West Chester Area School District", sector: "K-12", address: "", phone: "", contact1: "Wayne Birster", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 36, name: "Great Valley SD", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 37, name: "Owen J. Roberts SD", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 38, name: "Unionville-Chadds Ford SD", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 39, name: "Oxford Area SD", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 40, name: "Avon Grove SD", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 41, name: "Downingtown SD", sector: "K-12", address: "", phone: "6120 269 8460", contact1: "Kelly Harper - Dir. of Facilities - ext 180", contact2: "Chris Stefani - Ast. Dir. of Facilities", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 42, name: "Appoquinimink School District", sector: "K-12", address: "", phone: "302 376 4108", contact1: "Andy Walton - Supervisor of Facilities and Maintenance", contact2: "", email1: "andy.walton@appo.k12.de.us", email2: "", notes: [], lastContacted: null },
+      { id: 43, name: "Brandywine School District", sector: "K-12", address: "", phone: "302 792 3826", contact1: "John Read", contact2: "", email1: "John.Read@bsd.k12.de.us", email2: "", notes: [], lastContacted: null },
+      { id: 44, name: "Caesar Rodney School District", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 45, name: "Cape Henlopen School District", sector: "K-12", address: "", phone: "302 644 2538", contact1: "Cheyenne Rivera", contact2: "", email1: "cheyenne.Rivera@cape.k12.de.us", email2: "", notes: [], lastContacted: null },
+      { id: 46, name: "Capital School District", sector: "K-12", address: "", phone: "302 857 4210", contact1: "Elliot Hardin", contact2: "", email1: "elliot.harding@capital.k12.de.us", email2: "", notes: [], lastContacted: null },
+      { id: 47, name: "Christina School District", sector: "K-12", address: "", phone: "302 454 2400 ext 43133", contact1: "Rod Harden", contact2: "", email1: "fard.harden@christina.k12.de.us", email2: "", notes: [], lastContacted: null },
+      { id: 48, name: "Colonial School District", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 49, name: "Delmar School District", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 50, name: "Indian River School District", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 51, name: "Laurel School District", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 52, name: "New Castle Vo-Tech", sector: "K-12", address: "", phone: "302 995 8000 ext 23647", contact1: "Al Schrum Jr.", contact2: "", email1: "a.schrum@nccvt.k12.de.us", email2: "", notes: [], lastContacted: null },
+      { id: 53, name: "Milford School District", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 54, name: "Red Clay Consolidated School District", sector: "K-12", address: "", phone: "302 892 3284", contact1: "Marcin Michalski", contact2: "", email1: "marcin.michalski@redclay.k12.de.us", email2: "", notes: [], lastContacted: null },
+      { id: 55, name: "Seaford School District", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 56, name: "Smyrna School District", sector: "K-12", address: "", phone: "302 653 3131", contact1: "Ed Stover", contact2: "", email1: "edward.stover@smyrna.k12.de.us", email2: "", notes: [], lastContacted: null },
+      { id: 57, name: "Sussex Technical School District", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 58, name: "Woodbridge School District", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 59, name: "Lake Forest School District", sector: "K-12", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 60, name: "The Haverford School", sector: "Private", address: "", phone: "610 642 3020", contact1: "Joan McCaul", contact2: "", email1: "mccaul@havsd.net", email2: "", notes: [], lastContacted: null },
+      { id: 61, name: "Tatnall", sector: "Private", address: "", phone: "302 892 4339", contact1: "Angelo Fontanazza", contact2: "", email1: "angelo.fontanazza@tatnall.org", email2: "", notes: [], lastContacted: null },
+      { id: 62, name: "Archmere Academy", sector: "Private", address: "", phone: "302 798 6632", contact1: "Carl Campion", contact2: "", email1: "ccampion@archmereacademy.com", email2: "", notes: [], lastContacted: null },
+      { id: 63, name: "Avon Grove Charter School", sector: "Private", address: "", phone: "484 667 5000", contact1: "Ian Currie", contact2: "", email1: "icurrie@agcharter.org", email2: "", notes: [], lastContacted: null },
+      { id: 64, name: "Bishop Shanahan High School", sector: "Private", address: "", phone: "610 518 1300", contact1: "Don Gentile", contact2: "", email1: "dgentile@shanahan.org", email2: "", notes: [], lastContacted: null },
+      { id: 65, name: "CADES", sector: "Private", address: "", phone: "610 328 5955", contact1: "Andrew Lopchinsky", contact2: "", email1: "Andrew.lopchinsky@cades.org", email2: "", notes: [], lastContacted: null },
+      { id: 66, name: "Episcopal Acadeny", sector: "Private", address: "", phone: "484 424 1400", contact1: "Chris Lauer", contact2: "", email1: "CLauer@espicopalacademy.org", email2: "", notes: [], lastContacted: null },
+      { id: 67, name: "Malvern Prep", sector: "Private", address: "", phone: "484 273 2300", contact1: "Jeff Kinney", contact2: "", email1: "jkinney@malvernprep.org", email2: "", notes: [], lastContacted: null },
+      { id: 68, name: "Sacred Heart of Bryn Mawr", sector: "Private", address: "", phone: "610 527 0942", contact1: "Joseph Fordyce", contact2: "", email1: "joe.fordyce@shabrynmawr.org", email2: "", notes: [], lastContacted: null },
+      { id: 69, name: "St. Aloysius", sector: "Private", address: "", phone: "610 525 1670", contact1: "Tim Smythe", contact2: "", email1: "tsmythe@staloysiusacademy.org", email2: "", notes: [], lastContacted: null },
+      { id: 70, name: "St. Katherines of Sienna", sector: "Private", address: "", phone: "484 431 5821", contact1: "Catherine Lowry", contact2: "", email1: "catherine.lowry@foxroach.com", email2: "", notes: [], lastContacted: null },
+      { id: 71, name: "Westtown School", sector: "Private", address: "", phone: "610 399 7624", contact1: "Kate Donnelly", contact2: "", email1: "kate.donnelly@westtown.edu", email2: "", notes: [], lastContacted: null },
+      { id: 72, name: "Agnes Irwin School", sector: "Private", address: "", phone: "610 802 7970", contact1: "Scott Ryle", contact2: "", email1: "sryle@agnesirwin.org", email2: "", notes: [], lastContacted: null },
+      { id: 73, name: "St. Mark\'s High School", sector: "Private", address: "", phone: "302 757 8859", contact1: "Martin Booth", contact2: "", email1: "mbooth@stmarkhs.net", email2: "", notes: [], lastContacted: null },
+      { id: 74, name: "Tower Hill School", sector: "Private", address: "", phone: "302 218 1648", contact1: "John Tchinnis", contact2: "", email1: "jtchinnis@towerhill.org", email2: "", notes: [], lastContacted: null },
+      { id: 75, name: "Ursuline Academy", sector: "Private", address: "", phone: "302 658 7158", contact1: "", contact2: "", email1: "mlombardi@ursulineacademy.net", email2: "", notes: [], lastContacted: null },
+      { id: 76, name: "The Independence School", sector: "Private", address: "", phone: "302 239 0330", contact1: "Lee Fullmer", contact2: "", email1: "lfullmer@tisde.org", email2: "", notes: [], lastContacted: null },
+      { id: 77, name: "Sanford School", sector: "Private", address: "", phone: "302 239 5263", contact1: "Kevin Needham", contact2: "", email1: "needhamk@sanfordschool.org", email2: "", notes: [], lastContacted: null },
+      { id: 78, name: "St. Andrew\'s School", sector: "Private", address: "", phone: "302 285 4332", contact1: "Dave McKelvy", contact2: "", email1: "dmckelvy@standrews-de.org", email2: "", notes: [], lastContacted: null },
+      { id: 79, name: "Academy of Notre Dame", sector: "Private", address: "", phone: "610 687 0650", contact1: "Dell\'Arciprete", contact2: "", email1: "rdellarciprete@ndapa.org", email2: "", notes: [], lastContacted: null },
+      { id: 80, name: "Jack M. Barrack Hebrew Academy", sector: "Private", address: "", phone: "610 922 2300", contact1: "Will", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 81, name: "Baldwin School", sector: "Private", address: "", phone: "610 525 2700 ext 250", contact1: "Chris Meyer", contact2: "", email1: "Chris.Meyer@baldwinschool.org", email2: "", notes: [], lastContacted: null },
+      { id: 82, name: "Delaware County", sector: "Municipal", address: "", phone: "610 891 5365", contact1: "Danielle Floyd", contact2: "", email1: "floydD@co.delaware.pa.us", email2: "", notes: [], lastContacted: null },
+      { id: 83, name: "Chester County", sector: "Municipal", address: "", phone: "610 344 6020", contact1: "Tony Igneczi", contact2: "", email1: "tigneczi@chesco.org", email2: "", notes: [], lastContacted: null },
+      { id: 84, name: "Kent County", sector: "Municipal", address: "", phone: "302 744 2357", contact1: "Dick MacDonald", contact2: "", email1: "Dick.macdonald@co.kent.de.us", email2: "", notes: [], lastContacted: null },
+      { id: 85, name: "New Castle County", sector: "Municipal", address: "", phone: "302 395 5710", contact1: "Regis Yurcich", contact2: "", email1: "ryurcich@nccde.org", email2: "", notes: [], lastContacted: null },
+      { id: 86, name: "West Chester Borough", sector: "Municipal", address: "", phone: "484 887 2757", contact1: "", contact2: "", email1: "avennettilli@west-chester.com", email2: "", notes: [], lastContacted: null },
+      { id: 87, name: "West Goshen Township", sector: "Municipal", address: "", phone: "610 696 5266", contact1: "J. David Woodcock", contact2: "", email1: "publicworks@westgoshen.org", email2: "", notes: [], lastContacted: null },
+      { id: 88, name: "Wilmington Housing Authority", sector: "Municipal", address: "", phone: "302 429 6701 ext 1043", contact1: "Roger Turk", contact2: "", email1: "rturk@whadelaware.org", email2: "", notes: [], lastContacted: null },
+      { id: 89, name: "Borough of Media", sector: "Municipal", address: "", phone: "610 566 5210 ext 249", contact1: "Mike Green", contact2: "", email1: "mgreen@mediaborough.com", email2: "", notes: [], lastContacted: null },
+      { id: 90, name: "Springfield Township", sector: "Municipal", address: "", phone: "610 544 1300 ext 613", contact1: "Bob Sinkinson", contact2: "", email1: "rsinkingsonsr@springfielddelco.org", email2: "", notes: [], lastContacted: null },
+      { id: 91, name: "Newtown Township", sector: "Municipal", address: "", phone: "610 356 0200", contact1: "George Sharretts", contact2: "", email1: "sharrettsg@newtowntownship.org", email2: "", notes: [], lastContacted: null },
+      { id: 92, name: "City of Newark, DE", sector: "Municipal", address: "", phone: "302 366 7098", contact1: "David Greenplate", contact2: "", email1: "dgreenplate@newark.de.us", email2: "", notes: [], lastContacted: null },
+      { id: 93, name: "Georgetown, DE", sector: "Municipal", address: "", phone: "302 856 7391", contact1: "Bobby Fletcher", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 94, name: "Borough of Downingtown", sector: "Municipal", address: "", phone: "610 239 0344 ext 232", contact1: "Jack Law", contact2: "", email1: "jlaw@downingtown.org", email2: "", notes: [], lastContacted: null },
+      { id: 95, name: "East Whiteland Township", sector: "Municipal", address: "", phone: "610 897 4205", contact1: "John Nagal - Twsp Mngr", contact2: "", email1: "jnagel@eastwhiteland.org", email2: "", notes: [], lastContacted: null },
+      { id: 96, name: "West Goshen Township", sector: "Municipal", address: "", phone: "620 696 5266", contact1: "Mike Caccavo", contact2: "", email1: "mcaccavo@westgoshen.org", email2: "", notes: [], lastContacted: null },
+      { id: 97, name: "East Marlborough Township", sector: "Municipal", address: "", phone: "610 444 1375", contact1: "Jeff Simpson", contact2: "", email1: "jsimpson@eastmarlborough.org", email2: "", notes: [], lastContacted: null },
+      { id: 98, name: "Easttown Township", sector: "Municipal", address: "", phone: "610 687 3000", contact1: "Don Curley", contact2: "", email1: "dcurcley@easttown.oeg", email2: "", notes: [], lastContacted: null },
+      { id: 99, name: "City of Dover", sector: "Municipal", address: "", phone: "610 674 7567", contact1: "Mike Hamlett", contact2: "", email1: "mhamlett@dover.de.us", email2: "", notes: [], lastContacted: null },
+      { id: 100, name: "City of Wilmington", sector: "Municipal", address: "", phone: "302 576 3081", contact1: "Vincent Carrocia", contact2: "", email1: "vincent.carroccia@dpw.gov.za", email2: "", notes: [], lastContacted: null },
+      { id: 101, name: "Upper Darby", sector: "Municipal", address: "", phone: "302 734 7659", contact1: "Joseph. R. Martin Jr.", contact2: "", email1: "jmartin@upperdarby.org", email2: "", notes: [], lastContacted: null },
+      { id: 102, name: "City of Chester", sector: "Municipal", address: "", phone: "484 318 0994", contact1: "Duane Kee", contact2: "", email1: "dlee@chestercity.org", email2: "", notes: [], lastContacted: null },
+      { id: 103, name: "Aston Township", sector: "Municipal", address: "", phone: "610 494 8005", contact1: "Russ Palmore", contact2: "", email1: "rpalmore@astontownship.net", email2: "", notes: [], lastContacted: null },
+      { id: 104, name: "Delaware River and Bay Authority", sector: "Municipal", address: "", phone: "302 571 6422", contact1: "Joseph Gibbons", contact2: "", email1: "joseph.gibbons@drba.net", email2: "", notes: [], lastContacted: null },
+      { id: 105, name: "DE Dept of Health and Human Services", sector: "Federal", address: "", phone: "302 255 9335", contact1: "Daniel Episcopo", contact2: "", email1: "daniel.episcopo@delaware.gov", email2: "", notes: [], lastContacted: null },
+      { id: 106, name: "DE Dept of Transportation", sector: "Federal", address: "", phone: "302 760 2194", contact1: "Rhandir Sharma", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 107, name: "Penn Department of Transportation", sector: "Federal", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 108, name: "Dover AFB", sector: "Federal", address: "", phone: "", contact1: "George Molina", contact2: "", email1: "George.mola@us.af.mil", email2: "", notes: [], lastContacted: null },
+      { id: 109, name: "Coatesville VA Medical Center", sector: "Federal", address: "", phone: "610 384 1681", contact1: "Scott Carter", contact2: "", email1: "Scott.Carter@va.gov", email2: "", notes: [], lastContacted: null },
+      { id: 110, name: "Delaware Dept. of Corrections", sector: "Federal", address: "", phone: "1 866 284 7483", contact1: "Eric Smeltzer", contact2: "", email1: "Eric.Smeltzer@delaware.gov", email2: "", notes: [], lastContacted: null },
+      { id: 111, name: "ABHA", sector: "Architect", address: "", phone: "302 658 6426", contact1: "Bryan Williams", contact2: "", email1: "bwilliams@abha.com", email2: "", notes: [], lastContacted: null },
+      { id: 112, name: "Fearn-Clendaniel", sector: "Architect", address: "", phone: "302 998 7615 ext 102", contact1: "Kenneth Fearn", contact2: "", email1: "kenfearn@fcarchitects.net", email2: "", notes: [], lastContacted: null },
+      { id: 113, name: "Century Engineers", sector: "Architect", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 114, name: "Architechtural Alliance", sector: "Architect", address: "", phone: "302 478 3777", contact1: "Rudy Ducharme", contact2: "", email1: "r.ducharme@archalli.com", email2: "", notes: [], lastContacted: null },
+      { id: 115, name: "DII Design", sector: "Architect", address: "", phone: "484 685 3339", contact1: "Michael Kalustov", contact2: "", email1: "mkalustov@d2groups.com", email2: "", notes: [], lastContacted: null },
+      { id: 116, name: "Bernarden", sector: "Architect", address: "", phone: "610 444 7873", contact1: "Paul Andrew Sgroi", contact2: "", email1: "psgroi@bernardon.com", email2: "", notes: [], lastContacted: null },
+      { id: 117, name: "Buck Simpers", sector: "Architect", address: "", phone: "302 658 9300 ext 231", contact1: "Tim Skibicki", contact2: "", email1: "tskibicki@simpers.com", email2: "", notes: [], lastContacted: null },
+      { id: 118, name: "Spotts, Stevens, and McCoy (Practical Energy Solutions)", sector: "Architect", address: "", phone: "610 430 1382", contact1: "Paul Spiegel", contact2: "", email1: "paul.spiegel@ssmgroup.com", email2: "", notes: [{"id": 118000, "text": "Paul Spiegel is doing an energy feasability study at Radnor Township. I reached out to him and spok on the phone. I sent him the roofing info. Follow up", "date": "2023-10-02", "timestamp": "Imported from ABC 2026"}], lastContacted: "2023-10-02" },
+      { id: 119, name: "Tetra Tech", sector: "Architect", address: "", phone: "302 283 2210", contact1: "Michael Berninger", contact2: "", email1: "michael.berninger@tetratech.com", email2: "", notes: [], lastContacted: null },
+      { id: 120, name: "DBF", sector: "Architect", address: "", phone: "302 424 1441", contact1: "Michael Wheedleton", contact2: "", email1: "mwh@dbfinc.com", email2: "", notes: [{"id": 120000, "text": "stopped by DBF office and left info for Mark. Followed up the next day with an email", "date": "2023-08-30", "timestamp": "Imported from ABC 2026"}], lastContacted: "2023-08-30" },
+      { id: 121, name: "DEDC, Inc.", sector: "Architect", address: "", phone: "302 738 7172", contact1: "Bill Stump", contact2: "", email1: "bstump@dedc-eng.com", email2: "", notes: [], lastContacted: null },
+      { id: 122, name: "Studio Jaed", sector: "Architect", address: "", phone: "302 832 1652", contact1: "Paul Guggenberger", contact2: "", email1: "guggenbergerp@studiojaed.com", email2: "", notes: [], lastContacted: null },
+      { id: 123, name: "Design Collaborative, Inc.", sector: "Architect", address: "", phone: "302 652 4221", contact1: "John Dobraniecki, AIA", contact2: "", email1: "johnd@dciuarchitects.com", email2: "", notes: [], lastContacted: null },
+      { id: 124, name: "Frens and Frens", sector: "Architect", address: "", phone: "610 430 7730", contact1: "Anna Ives", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 125, name: "Gilbert Architects", sector: "Architect", address: "", phone: "717 858 4034", contact1: "Thomas Gilbert", contact2: "", email1: "tomg@gilbertarchitects.com", email2: "", notes: [], lastContacted: null },
+      { id: 126, name: "RG Architects", sector: "Architect", address: "", phone: "302 376 8100", contact1: "Robert Grove", contact2: "", email1: "bob@rgarchitects.net", email2: "", notes: [], lastContacted: null },
+      { id: 127, name: "Remington and Vernick", sector: "Architect", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 128, name: "TBS", sector: "Architect", address: "", phone: "856 547 6250", contact1: "Joseph DeAngelis", contact2: "", email1: "jdeangelis@tbsservices.com", email2: "", notes: [], lastContacted: null },
+      { id: 129, name: "Mantis Innovation", sector: "Architect", address: "", phone: "610 724 2218", contact1: "Patrick Fricko", contact2: "", email1: "pfricko@mantisinnovation.com", email2: "", notes: [], lastContacted: null },
+      { id: 130, name: "Linn Architects", sector: "Architect", address: "", phone: "", contact1: "Thomas Linn", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 131, name: "Spiezle", sector: "Architect", address: "", phone: "484 766 1666 ext 112", contact1: "Richard Quinn (Principal), Chris Gaumann", contact2: "", email1: "rquinn@spiezle.com", email2: "", notes: [{"id": 131000, "text": "Sent emails to Bob Reid and Richard Quinn\u2026 7/18 - Called and left a message for Richard Quinn. First Intro. Follow up", "date": "2023-08-30", "timestamp": "Imported from ABC 2026"}], lastContacted: "2023-08-30" },
+      { id: 132, name: "StudioGregg Architects", sector: "Architect", address: "", phone: "", contact1: "Bill Gregg and Ann Gregg", contact2: "", email1: "bgregg@studiogreggarch.com", email2: "", notes: [{"id": 132000, "text": "Husband and wife team. They work out of their home in Bryan Mawr. Do a ton of business", "date": "2026-01-01", "timestamp": "Imported from ABC 2026"}], lastContacted: null },
+      { id: 133, name: "Trinity Health - Mercy Fitzgerald Hospital", sector: "Healthcare", address: "", phone: "610 237 4160", contact1: "Ken Subers", contact2: "", email1: "ksubers@mercyhealth.org", email2: "", notes: [], lastContacted: null },
+      { id: 134, name: "Crothall Healthcare", sector: "Healthcare", address: "", phone: "610 576 5210", contact1: "Bruce Bashwiner", contact2: "", email1: "bruce.bashwiner@crothall.com", email2: "", notes: [], lastContacted: null },
+      { id: 135, name: "Nemours", sector: "Healthcare", address: "", phone: "302 298 7421", contact1: "Bryan Auger", contact2: "", email1: "bryan.auger@nemours.org", email2: "", notes: [], lastContacted: null },
+      { id: 136, name: "Main Line Health", sector: "Healthcare", address: "", phone: "484 580 4759", contact1: "Laurie Anseth", contact2: "", email1: "ansethL@Mlhs.com", email2: "", notes: [], lastContacted: "2023-08-14" },
+      { id: 137, name: "Tower Health", sector: "Healthcare", address: "", phone: "610 869 1105", contact1: "Phillip Massey", contact2: "", email1: "phillip.massey@towerhealth.org", email2: "", notes: [], lastContacted: null },
+      { id: 138, name: "Christiana Care", sector: "Healthcare", address: "", phone: "302 733 3788", contact1: "Jeff Krebs", contact2: "", email1: "jkrebs@christianacare.org", email2: "", notes: [], lastContacted: null },
+      { id: 139, name: "Crozer Chester", sector: "Healthcare", address: "", phone: "610 738 3636", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 140, name: "Genesis", sector: "Healthcare", address: "", phone: "610 872 5373", contact1: "Kevin Amberson", contact2: "", email1: "kevin_Amerson@genesishcc.com", email2: "", notes: [], lastContacted: null },
+      { id: 141, name: "Elwyn", sector: "Healthcare", address: "", phone: "610 891 2159", contact1: "Peter Thomas - Facility Mngr", contact2: "", email1: "peter.thomas@elwyn.org", email2: "", notes: [], lastContacted: null },
+      { id: 142, name: "Dunwoody Village", sector: "Healthcare", address: "", phone: "610 359 4579", contact1: "Wes Kuehnle", contact2: "", email1: "wkuehnle@dunwoody.org", email2: "", notes: [], lastContacted: null },
+      { id: 143, name: "Beebe Healthcare", sector: "Healthcare", address: "", phone: "302 645 3100 ext 5028", contact1: "Brian Roberts (Interim Director) and Ike Whaley (Field Superintendent)", contact2: "", email1: "dpolisoto@beebehealthcare.org", email2: "", notes: [{"id": 143000, "text": "Ashley Solbach got in touch with Ike Whaley. Brian Roberts told Ashley to have me contact Ike to schedule an assesment of 5 hospitals.", "date": "2023-09-05", "timestamp": "Imported from ABC 2026"}], lastContacted: "2023-09-05" },
+      { id: 144, name: "Bayhealth Hospital", sector: "Healthcare", address: "", phone: "302 744 7195", contact1: "Crystal Connors", contact2: "", email1: "crystal_connors@bayhealth.org", email2: "", notes: [{"id": 144000, "text": "Sent email to Criystal. Said I am available to come out and inspect any difficult roof leaks that they might be dealing with", "date": "2023-07-24", "timestamp": "Imported from ABC 2026"}], lastContacted: "2023-07-24" },
+      { id: 145, name: "Devereaux Advances Behavioral Health", sector: "Healthcare", address: "", phone: "610 296 6847", contact1: "Peter Dero", contact2: "", email1: "mdero@devereux.org", email2: "", notes: [], lastContacted: null },
+      { id: 146, name: "Rosemont Center for Behivioral Health", sector: "Healthcare", address: "", phone: "610 580 0400", contact1: "Carlos Daley", contact2: "", email1: "cdaley@rosemontcenterhc.com", email2: "", notes: [], lastContacted: null },
+      { id: 147, name: "Providence Rehabilitation and Healthcare", sector: "Healthcare", address: "", phone: "610 626 8065", contact1: "Allen Herbert", contact2: "", email1: "hallen@provrehab.com", email2: "", notes: [], lastContacted: null },
+      { id: 148, name: "Delaware River and Bay Authority", sector: "Utility", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 149, name: "Chesapeake Bay Energy", sector: "Utility", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 150, name: "Aqua America", sector: "Utility", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 151, name: "Energy Transfer", sector: "Utility", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 152, name: "PBF Energy (Delaware City)", sector: "Utility", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 153, name: "Delmarva Power and Light", sector: "Utility", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 154, name: "Jacob\'s Engineering", sector: "Utility", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 155, name: "Monroe Energy", sector: "Utility", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 156, name: "Essential Utilities", sector: "Utility", address: "", phone: "610 541 4169", contact1: "Silvio DeAngelo", contact2: "", email1: "smdeangelo@essential.com", email2: "", notes: [], lastContacted: null },
+      { id: 157, name: "Chester Water Authority", sector: "Utility", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 158, name: "AirGas", sector: "Private", address: "", phone: "610 902 6241", contact1: "Michele Firth", contact2: "", email1: "Michele.Firth@airgas.com", email2: "", notes: [], lastContacted: null },
+      { id: 159, name: "Wawa", sector: "Private", address: "", phone: "610 416 3849", contact1: "Russell Phillips", contact2: "", email1: "russ.w.phillips@wawa.com", email2: "", notes: [], lastContacted: null },
+      { id: 160, name: "Brandywine Conservacy", sector: "Private", address: "", phone: "302 379 0260", contact1: "Matthew Collins", contact2: "", email1: "mcollins@brandywine.org", email2: "", notes: [], lastContacted: null },
+      { id: 161, name: "DuPont", sector: "Private", address: "", phone: "302 695 4081", contact1: "Patricia Sergi", contact2: "", email1: "patti.a.sergi-1@dupont.com", email2: "", notes: [], lastContacted: null },
+      { id: 162, name: "Boeing EPDM Restorations", sector: "Private", address: "", phone: "267 601 6655", contact1: "Kevin Killoran", contact2: "", email1: "kevin.g.killoran@boeing.com", email2: "", notes: [], lastContacted: null },
+      { id: 163, name: "Longwood Gardens", sector: "Private", address: "", phone: "610 388 5335", contact1: "Ken Stapleford", contact2: "", email1: "kstapleford@longwoodgardens.org", email2: "", notes: [], lastContacted: null },
+      { id: 164, name: "Perdue Farms", sector: "Private", address: "", phone: "302 855 5598", contact1: "Chris Reese", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 165, name: "WestRock Corp - Aston", sector: "Private", address: "", phone: "267 324 7111", contact1: "Justin Burrell", contact2: "", email1: "Justin.Burrell@westrock.com", email2: "", notes: [{"id": 165000, "text": "Spoke with Justin. He received my email and said he sad leaks. Sent my email to his Supervisor (probably David Beaty)", "date": "2023-07-18", "timestamp": "Imported from ABC 2026"}], lastContacted: "2023-07-18" },
+      { id: 166, name: "Bank of America", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 167, name: "Vanguard", sector: "Private", address: "", phone: "215 776 4853", contact1: "Chris Jackson", contact2: "", email1: "chris_Jackson@vanguard.com", email2: "", notes: [], lastContacted: null },
+      { id: 168, name: "Vishay", sector: "Private", address: "", phone: "603 881 7799 ext 281", contact1: "Arhur Pearce", contact2: "", email1: "arthur.pearce@vishay.com", email2: "", notes: [], lastContacted: null },
+      { id: 169, name: "Wilmington Pharma Tech", sector: "Private", address: "", phone: "302 518 1993", contact1: "Fend Han", contact2: "", email1: "feng.han@wilmingtonpharmatech.com", email2: "", notes: [], lastContacted: null },
+      { id: 170, name: "Harrah\'s Chester Casino", sector: "Private", address: "", phone: "484 490 1960", contact1: "Edmond Hopkinds", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 171, name: "MapleZone Sports Institute", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 172, name: "YSC Sports", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 173, name: "IceLine", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 174, name: "IceWorks", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 175, name: "Cork Industries", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 176, name: "Pennsylvania Machine Works", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 177, name: "Westlake Plastics", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 178, name: "Flowers Foods", sector: "Private", address: "", phone: "610 932 2300 (D) 610 802 2754 (cell)", contact1: "Jay Montgomery", contact2: "", email1: "jay.montgomery@flocorp.com", email2: "", notes: [{"id": 178000, "text": "Very bid food processing plant in Oxford, PA. Drove by and sent an email to Jay Montgomery introducing myself and asking if I can help with any roof leaks or concerns", "date": "2023-10-11", "timestamp": "Imported from ABC 2026"}], lastContacted: "2023-10-11" },
+      { id: 179, name: "American Airlines", sector: "Private", address: "", phone: "267 286 5673 (mobile)", contact1: "Terrance McLaughlin", contact2: "", email1: "terry.mclaughlin@aa.com", email2: "", notes: [], lastContacted: null },
+      { id: 180, name: "Buccini/Pollin", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 181, name: "JLL Property Management", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 182, name: "EMCOR Services", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 183, name: "Brandywine Property Trust", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 184, name: "Buccini/Pollin", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 185, name: "CBRE", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 186, name: "Cadence Real Estate", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 187, name: "Daylesford Abbey", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 188, name: "St. Aloysius", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 189, name: "Immaculate Heart of Mary", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null },
+      { id: 190, name: "St. Christopher\'s", sector: "Private", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null }
+    ];
+
+    const statusColors = { A: { bg: "#E8F5E9", border: "#4CAF50", text: "#2E7D32", badge: "#4CAF50" }, B: { bg: "#E3F2FD", border: "#2196F3", text: "#1565C0", badge: "#2196F3" }, C: { bg: "#FFF3E0", border: "#FF9800", text: "#E65100", badge: "#FF9800" } };
+    const typeColors = { "K-12": "#7B1FA2", "Municipal": "#00695C", "Private": "#37474F", "Utility": "#0277BD", "Healthcare": "#C62828", "Federal": "#4527A0", "Higher Ed": "#1565C0" };
+    const fmt = (n) => n != null ? "$" + n.toLocaleString() : "—";
+    const pct = (n) => n != null ? Math.round(n * 100) + "%" : "—";
+    const toDateStr = (d) => d.toISOString().split("T")[0];
+    const toDisplay = (str) => { const d = new Date(str + "T12:00:00"); return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }); };
+    const isToday = (str) => str === toDateStr(new Date());
+    const inputStyle = { padding: "6px 8px", border: "1px solid #ddd", borderRadius: "4px", fontSize: "13px", width: "100%", boxSizing: "border-box" };
+
+    function useIsMobile(breakpoint = 768) {
+      const [isMobile, setIsMobile] = useState(window.innerWidth <= breakpoint);
+      useEffect(() => {
+        const handler = () => setIsMobile(window.innerWidth <= breakpoint);
+        window.addEventListener('resize', handler);
+        return () => window.removeEventListener('resize', handler);
+      }, [breakpoint]);
+      return isMobile;
+    }
+
+    /* ================================================================
+       TO-DO PAGE
+       ================================================================ */
+    function TodoPage({ tasks, setTasks, prospects, setProspects, isMobile }) {
+      const [showAdd, setShowAdd] = useState(false);
+      const today = toDateStr(new Date());
+      const [newTask, setNewTask] = useState({ title: "", date: today, notes: "", priority: 2, prospectId: null });
+      const [editingTaskId, setEditingTaskId] = useState(null);
+      const [editTask, setEditTask] = useState({});
+      const [confirmDeleteTask, setConfirmDeleteTask] = useState(null);
+      const [dateFilter, setDateFilter] = useState("all");
+      const [completionModal, setCompletionModal] = useState(null);
+      const [completionNote, setCompletionNote] = useState("");
+      const [addProspectMode, setAddProspectMode] = useState(false);
+      const [newProspectName, setNewProspectName] = useState("");
+      const [newProspectSector, setNewProspectSector] = useState("K-12");
+      const sortedProspects = useMemo(() => [...prospects].sort((a, b) => a.name.localeCompare(b.name)), [prospects]);
+      const sectors = [...new Set(prospects.map(p => p.sector).filter(Boolean))].sort();
+
+      const displayDate = (t) => (!t.completed && t.date < today) ? today : t.date;
+
+      const filteredTasks = useMemo(() => {
+        let list = tasks;
+        if (dateFilter === "today") list = list.filter(t => displayDate(t) === today);
+        else if (dateFilter === "week") {
+          const now = new Date();
+          const weekEnd = new Date(now);
+          weekEnd.setDate(weekEnd.getDate() + 7);
+          list = list.filter(t => { const dd = displayDate(t); return dd >= today && dd <= toDateStr(weekEnd); });
+        } else if (dateFilter === "completed") {
+          list = list.filter(t => t.completed);
+        }
+        return [...list].sort((a, b) => {
+          if (a.completed !== b.completed) return a.completed ? 1 : -1;
+          const dd = displayDate(a).localeCompare(displayDate(b));
+          if (dd !== 0) return dd;
+          return (a.priority || 2) - (b.priority || 2) || a.id - b.id;
+        });
+      }, [tasks, dateFilter, today]);
+
+      const grouped = useMemo(() => {
+        const groups = {};
+        filteredTasks.forEach(t => {
+          const dd = displayDate(t);
+          if (!groups[dd]) groups[dd] = [];
+          groups[dd].push(t);
+        });
+        return groups;
+      }, [filteredTasks]);
+
+      const stats = useMemo(() => {
+        const rolledToToday = tasks.filter(t => displayDate(t) === today);
+        const rolledOver = tasks.filter(t => !t.completed && t.date < today);
+        return {
+          total: tasks.length,
+          completed: tasks.filter(t => t.completed).length,
+          todayTotal: rolledToToday.length,
+          todayDone: rolledToToday.filter(t => t.completed).length,
+          rolledOver: rolledOver.length
+        };
+      }, [tasks, today]);
+
+      const addTask = () => {
+        if (!newTask.title.trim()) return;
+        const id = tasks.length > 0 ? Math.max(...tasks.map(t => t.id)) + 1 : 1;
+        setTasks(prev => [...prev, { ...newTask, id, priority: newTask.priority || 2, completed: false, completedAt: null, prospectId: newTask.prospectId || null }]);
+        setNewTask({ title: "", date: today, notes: "", priority: 2, prospectId: null });
+        setShowAdd(false);
+        setAddProspectMode(false);
+        setNewProspectName("");
+      };
+
+      const addNewProspect = () => {
+        if (!newProspectName.trim()) return;
+        const npId = prospects.length > 0 ? Math.max(...prospects.map(p => p.id)) + 1 : 1;
+        const np = { id: npId, name: newProspectName.trim(), sector: newProspectSector, address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", notes: [], lastContacted: null };
+        setProspects(prev => [...prev, np]);
+        setNewTask(prev => ({ ...prev, prospectId: npId }));
+        setAddProspectMode(false);
+        setNewProspectName("");
+      };
+
+      const [createProspectInModal, setCreateProspectInModal] = useState(false);
+      const [modalNewProspect, setModalNewProspect] = useState({ name: "", sector: "K-12" });
+
+      const toggleComplete = (id) => {
+        const task = tasks.find(t => t.id === id);
+        if (task && !task.completed) {
+          if (task.prospectId) {
+            const prospect = prospects.find(p => p.id === task.prospectId);
+            if (prospect) {
+              setCompletionModal({ taskId: id, prospectId: task.prospectId, prospectName: prospect.name, taskTitle: task.title, hasProspect: true });
+              setCompletionNote("Completed: " + task.title);
+              return;
+            }
+          }
+          // No linked prospect — show modal with option to create one
+          setCompletionModal({ taskId: id, prospectId: null, prospectName: null, taskTitle: task.title, hasProspect: false });
+          setCompletionNote("");
+          setCreateProspectInModal(false);
+          setModalNewProspect({ name: "", sector: "K-12" });
+          return;
+        }
+        setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed, completedAt: !t.completed ? new Date().toLocaleString() : null } : t));
+      };
+
+      const completeWithNote = () => {
+        if (!completionModal) return;
+        // If creating a new prospect from this modal
+        if (createProspectInModal && modalNewProspect.name.trim()) {
+          const npId = prospects.length > 0 ? Math.max(...prospects.map(p => p.id)) + 1 : 1;
+          const noteObj = completionNote.trim() ? [{ id: Date.now(), text: completionNote.trim(), date: today, timestamp: new Date().toLocaleString() }] : [];
+          const np = { id: npId, name: modalNewProspect.name.trim(), sector: modalNewProspect.sector, address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", extraContacts: [], notes: noteObj, lastContacted: today };
+          setProspects(prev => [...prev, np]);
+          setTasks(prev => prev.map(t => t.id === completionModal.taskId ? { ...t, completed: true, completedAt: new Date().toLocaleString(), prospectId: npId } : t));
+        } else if (completionModal.hasProspect && completionNote.trim()) {
+          // Existing prospect — add note
+          setProspects(prev => prev.map(p => p.id === completionModal.prospectId ? {
+            ...p,
+            notes: [{ id: Date.now(), text: completionNote.trim(), date: today, timestamp: new Date().toLocaleString() }, ...p.notes],
+            lastContacted: today
+          } : p));
+          setTasks(prev => prev.map(t => t.id === completionModal.taskId ? { ...t, completed: true, completedAt: new Date().toLocaleString() } : t));
+        } else {
+          setTasks(prev => prev.map(t => t.id === completionModal.taskId ? { ...t, completed: true, completedAt: new Date().toLocaleString() } : t));
+        }
+        setCompletionModal(null);
+        setCompletionNote("");
+        setCreateProspectInModal(false);
+        setModalNewProspect({ name: "", sector: "K-12" });
+      };
+
+      const completeWithoutNote = () => {
+        if (!completionModal) return;
+        setTasks(prev => prev.map(t => t.id === completionModal.taskId ? { ...t, completed: true, completedAt: new Date().toLocaleString() } : t));
+        setCompletionModal(null);
+        setCompletionNote("");
+        setCreateProspectInModal(false);
+        setModalNewProspect({ name: "", sector: "K-12" });
+      };
+
+      const deleteTask = (id) => {
+        setTasks(prev => prev.filter(t => t.id !== id));
+        setConfirmDeleteTask(null);
+      };
+
+      const saveTaskEdit = () => {
+        setTasks(prev => prev.map(t => t.id === editingTaskId ? { ...t, ...editTask } : t));
+        setEditingTaskId(null);
+        setEditTask({});
+      };
+
+      const dateColors = (dateStr) => {
+        if (dateStr === today) return { bg: "#E8F5E9", label: "#2E7D32", border: "#C8E6C9" };
+        if (dateStr < today) return { bg: "#F5F6F8", label: "#999", border: "#E0E0E0" };
+        return { bg: "#F5F6F8", label: "#555", border: "#E0E0E0" };
+      };
+
+      const getProspectName = (pId) => { const p = prospects.find(pr => pr.id === pId); return p ? p.name : null; };
+
+      return (
+        <div>
+          {/* Completion Note Modal */}
+          {completionModal && (
+            <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+              <div style={{ background: "#fff", borderRadius: 12, padding: isMobile ? 18 : 24, maxWidth: 500, width: "90%", boxShadow: "0 8px 30px rgba(0,0,0,0.2)", maxHeight: "85vh", overflowY: "auto" }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: "#2196F3", marginBottom: 4 }}>Task Completed!</h3>
+                {completionModal.hasProspect ? (
+                  <div>
+                    <p style={{ fontSize: 13, color: "#666", marginBottom: 12 }}>Add a note to <strong>{completionModal.prospectName}</strong>?</p>
+                    <textarea value={completionNote} onChange={e => setCompletionNote(e.target.value)} rows={3} style={{ width: "100%", padding: "8px 12px", border: "1px solid #ddd", borderRadius: 8, fontSize: 14, marginBottom: 12, resize: "vertical", fontFamily: "inherit" }} />
+                  </div>
+                ) : (
+                  <div>
+                    <p style={{ fontSize: 13, color: "#666", marginBottom: 12 }}>
+                      <strong>{completionModal.taskTitle}</strong> — would you like to create a prospect?
+                    </p>
+                    {!createProspectInModal ? (
+                      <button onClick={() => setCreateProspectInModal(true)} style={{ padding: "8px 16px", background: "#EDE9FE", color: "#7C3AED", border: "1.5px solid #7C3AED", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 13, marginBottom: 12, width: "100%" }}>+ Create a Prospect</button>
+                    ) : (
+                      <div style={{ background: "#EDE9FE", borderRadius: 8, padding: 14, marginBottom: 12 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#5B21B6", marginBottom: 8 }}>New Prospect</div>
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                          <div><label style={{ fontSize: 11, color: "#666" }}>Name</label><input value={modalNewProspect.name} onChange={e => setModalNewProspect(p => ({ ...p, name: e.target.value }))} placeholder="Prospect name" style={inputStyle} /></div>
+                          <div><label style={{ fontSize: 11, color: "#666" }}>Sector</label><select value={modalNewProspect.sector} onChange={e => setModalNewProspect(p => ({ ...p, sector: e.target.value }))} style={inputStyle}>
+                            {sectors.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select></div>
+                        </div>
+                        <div><label style={{ fontSize: 11, color: "#666" }}>Note (optional)</label><textarea value={completionNote} onChange={e => setCompletionNote(e.target.value)} rows={2} placeholder="Add an initial note for this prospect..." style={{ ...inputStyle, resize: "vertical" }} /></div>
+                        <button onClick={() => { setCreateProspectInModal(false); setModalNewProspect({ name: "", sector: "K-12" }); }} style={{ marginTop: 8, padding: "4px 12px", fontSize: 11, background: "#fff", color: "#666", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer" }}>Cancel</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button onClick={completeWithoutNote} style={{ padding: "8px 16px", background: "#f5f5f5", color: "#666", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer", fontSize: 13 }}>
+                    {completionModal.hasProspect ? "Skip" : "Just Complete"}
+                  </button>
+                  <button onClick={completeWithNote} disabled={createProspectInModal && !modalNewProspect.name.trim()} style={{ padding: "8px 16px", background: (createProspectInModal && !modalNewProspect.name.trim()) ? "#ccc" : "#4CAF50", color: "#fff", border: "none", borderRadius: 6, cursor: (createProspectInModal && !modalNewProspect.name.trim()) ? "default" : "pointer", fontWeight: 600, fontSize: 13 }}>
+                    {createProspectInModal ? "Create & Complete" : completionModal.hasProspect ? "Save Note" : "Complete"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Stats */}
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: isMobile ? 8 : 12, marginBottom: isMobile ? 12 : 20 }}>
+            <div style={{ padding: isMobile ? "10px 12px" : "14px 16px", borderRadius: 10, background: "#fff", border: "1.5px solid #E0E0E0" }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "#999", marginBottom: 2 }}>Today</div>
+              <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: "#1a1a2e" }}>{stats.todayDone}/{stats.todayTotal}</div>
+            </div>
+            <div style={{ padding: isMobile ? "10px 12px" : "14px 16px", borderRadius: 10, background: stats.rolledOver > 0 ? "#FFF8E1" : "#fff", border: `1.5px solid ${stats.rolledOver > 0 ? "#FFE082" : "#E0E0E0"}` }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: stats.rolledOver > 0 ? "#F57F17" : "#999", marginBottom: 2 }}>Rolled Over</div>
+              <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: stats.rolledOver > 0 ? "#F57F17" : "#1a1a2e" }}>{stats.rolledOver}</div>
+            </div>
+            <div style={{ padding: isMobile ? "10px 12px" : "14px 16px", borderRadius: 10, background: "#fff", border: "1.5px solid #E0E0E0" }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "#999", marginBottom: 2 }}>All Tasks</div>
+              <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: "#1a1a2e" }}>{stats.total}</div>
+            </div>
+            <div style={{ padding: isMobile ? "10px 12px" : "14px 16px", borderRadius: 10, background: stats.total > 0 ? "#E3F2FD" : "#fff", border: `1.5px solid ${stats.total > 0 ? "#BBDEFB" : "#E0E0E0"}` }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "#1565C0", marginBottom: 2 }}>Progress</div>
+              <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: "#1565C0" }}>{stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%</div>
+              <div style={{ width: "100%", height: 4, background: "#E0E0E0", borderRadius: 2, marginTop: 4 }}><div style={{ width: `${stats.total > 0 ? (stats.completed / stats.total) * 100 : 0}%`, height: 4, background: "#2196F3", borderRadius: 2, transition: "width 0.3s" }} /></div>
+            </div>
+          </div>
+
+          {/* Controls */}
+          <div style={{ display: "flex", gap: 6, marginBottom: isMobile ? 10 : 16, alignItems: "center", flexWrap: "wrap" }}>
+            {[["all", "All"], ["today", "Today"], ["week", "Week"], ["completed", "Done"]].map(([key, label]) => (
+              <button key={key} onClick={() => setDateFilter(key)} style={{ padding: isMobile ? "6px 10px" : "6px 14px", fontSize: isMobile ? 11 : 12, fontWeight: 500, background: dateFilter === key ? "#1a1a2e" : "#fff", color: dateFilter === key ? "#fff" : "#555", border: `1px solid ${dateFilter === key ? "#1a1a2e" : "#ddd"}`, borderRadius: 6, cursor: "pointer" }}>{label}{key === "completed" ? ` (${stats.completed})` : ""}</button>
+            ))}
+            <div style={{ flex: 1 }} />
+            <button onClick={() => setShowAdd(!showAdd)} style={{ padding: isMobile ? "8px 12px" : "8px 16px", background: "#2196F3", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>+ Add</button>
+          </div>
+
+          {/* Add Task Form */}
+          {showAdd && (
+            <div style={{ background: "#fff", border: "2px solid #2196F3", borderRadius: 10, padding: 18, marginBottom: 16 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: "#1565C0" }}>New Task</div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 160px 100px", gap: 10, marginBottom: 10 }}>
+                <div><label style={{ fontSize: 11, color: "#666" }}>Task</label><input value={newTask.title} onChange={e => setNewTask(p => ({ ...p, title: e.target.value }))} placeholder="What do you need to do?" style={inputStyle} onKeyDown={e => e.key === "Enter" && addTask()} /></div>
+                <div style={isMobile ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } : {}}><div><label style={{ fontSize: 11, color: "#666" }}>Date</label><input type="date" value={newTask.date} onChange={e => setNewTask(p => ({ ...p, date: e.target.value }))} style={inputStyle} /></div>
+                {isMobile && <div><label style={{ fontSize: 11, color: "#666" }}>Priority</label><select value={newTask.priority} onChange={e => setNewTask(p => ({ ...p, priority: Number(e.target.value) }))} style={inputStyle}><option value={1}>1 - High</option><option value={2}>2 - Medium</option><option value={3}>3 - Low</option></select></div>}</div>
+                {!isMobile && <div><label style={{ fontSize: 11, color: "#666" }}>Priority</label><select value={newTask.priority} onChange={e => setNewTask(p => ({ ...p, priority: Number(e.target.value) }))} style={inputStyle}><option value={1}>1 - High</option><option value={2}>2 - Medium</option><option value={3}>3 - Low</option></select></div>}
+              </div>
+              <div style={{ marginBottom: 12 }}><label style={{ fontSize: 11, color: "#666" }}>Notes (optional)</label><textarea value={newTask.notes} onChange={e => setNewTask(p => ({ ...p, notes: e.target.value }))} rows={2} placeholder="Any details, context, or reminders..." style={{ ...inputStyle, resize: "vertical" }} /></div>
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 11, color: "#666" }}>Link to Prospect (optional)</label>
+                <select value={newTask.prospectId || ""} onChange={e => { if (e.target.value === "__add__") { setAddProspectMode(true); setNewTask(p => ({ ...p, prospectId: null })); } else { setAddProspectMode(false); setNewTask(p => ({ ...p, prospectId: e.target.value ? Number(e.target.value) : null })); } }} style={{ ...inputStyle, color: newTask.prospectId ? "#1a1a2e" : "#999" }}>
+                  <option value="">No Prospect</option>
+                  {sortedProspects.map(p => <option key={p.id} value={p.id}>{p.name}{p.sector ? ` \u2014 ${p.sector}` : ""}</option>)}
+                  <option value="__add__">+ Add a Prospect</option>
+                </select>
+                {addProspectMode && (
+                  <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center", background: "#EDE9FE", borderRadius: 8, padding: 10 }}>
+                    <input value={newProspectName} onChange={e => setNewProspectName(e.target.value)} placeholder="Prospect name..." onKeyDown={e => e.key === "Enter" && addNewProspect()} style={{ flex: 1, padding: "6px 10px", border: "1px solid #D1C4E9", borderRadius: 6, fontSize: 13 }} />
+                    <select value={newProspectSector} onChange={e => setNewProspectSector(e.target.value)} style={{ padding: "6px 10px", border: "1px solid #D1C4E9", borderRadius: 6, fontSize: 13 }}>
+                      {sectors.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <button onClick={addNewProspect} style={{ padding: "6px 12px", background: "#7C3AED", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Add</button>
+                    <button onClick={() => { setAddProspectMode(false); setNewProspectName(""); }} style={{ padding: "6px 12px", background: "#fff", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer", fontSize: 12, color: "#666" }}>Cancel</button>
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={addTask} disabled={!newTask.title.trim()} style={{ padding: "8px 20px", background: newTask.title.trim() ? "#2196F3" : "#ccc", color: "#fff", border: "none", borderRadius: 6, cursor: newTask.title.trim() ? "pointer" : "default", fontWeight: 600, fontSize: 13 }}>Add Task</button>
+                <button onClick={() => { setShowAdd(false); setAddProspectMode(false); setNewProspectName(""); }} style={{ padding: "8px 20px", background: "#fff", color: "#666", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer", fontSize: 13 }}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* Task List */}
+          {Object.keys(grouped).length === 0 && (
+            <div style={{ background: "#fff", borderRadius: 10, border: "1px solid #e0e0e0", padding: 50, textAlign: "center" }}>
+              <div style={{ fontSize: 16, color: "#999", marginBottom: 8 }}>No tasks yet</div>
+              <div style={{ fontSize: 13, color: "#bbb" }}>Click "+ Add Task" to get started</div>
+            </div>
+          )}
+
+          {Object.entries(grouped).map(([date, dateTasks]) => {
+            const dc = dateColors(date);
+            const incomplete = dateTasks.filter(t => !t.completed);
+            const complete = dateTasks.filter(t => t.completed);
+            const sorted = [...incomplete, ...complete];
+            return (
+              <div key={date} style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: dc.label, background: dc.bg, padding: "4px 12px", borderRadius: 6, border: `1px solid ${dc.border}` }}>
+                    {isToday(date) ? "Today" : toDisplay(date)}
+                  </span>
+                  {isToday(date) && dateTasks.some(t => t.date < today && !t.completed) && <span style={{ fontSize: 11, color: "#F57F17", fontWeight: 500 }}>includes rolled-over tasks</span>}
+                  <span style={{ fontSize: 11, color: "#999" }}>{complete.length}/{dateTasks.length} done</span>
+                </div>
+                <div style={{ background: "#fff", borderRadius: 10, border: `1px solid ${dc.border}`, overflow: "hidden" }}>
+                  {sorted.map((task, tIdx) => {
+                    const isEditing = editingTaskId === task.id;
+                    return (
+                      <div key={task.id} style={{ padding: "12px 16px", borderBottom: tIdx < sorted.length - 1 ? "1px solid #f0f0f0" : "none", background: task.completed ? "#FAFBFC" : "transparent" }}>
+                        {isEditing ? (
+                          <div>
+                            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 160px 100px", gap: 10, marginBottom: 8 }}>
+                              <div><label style={{ fontSize: 11, color: "#666" }}>Task</label><input value={editTask.title} onChange={e => setEditTask(p => ({ ...p, title: e.target.value }))} style={inputStyle} /></div>
+                              <div style={isMobile ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } : {}}><div><label style={{ fontSize: 11, color: "#666" }}>Date</label><input type="date" value={editTask.date} onChange={e => setEditTask(p => ({ ...p, date: e.target.value }))} style={inputStyle} /></div>
+                              {isMobile && <div><label style={{ fontSize: 11, color: "#666" }}>Priority</label><select value={editTask.priority || 2} onChange={e => setEditTask(p => ({ ...p, priority: Number(e.target.value) }))} style={inputStyle}><option value={1}>1 - High</option><option value={2}>2 - Medium</option><option value={3}>3 - Low</option></select></div>}</div>
+                              {!isMobile && <div><label style={{ fontSize: 11, color: "#666" }}>Priority</label><select value={editTask.priority || 2} onChange={e => setEditTask(p => ({ ...p, priority: Number(e.target.value) }))} style={inputStyle}><option value={1}>1 - High</option><option value={2}>2 - Medium</option><option value={3}>3 - Low</option></select></div>}
+                            </div>
+                            <div style={{ marginBottom: 10 }}><label style={{ fontSize: 11, color: "#666" }}>Notes</label><textarea value={editTask.notes} onChange={e => setEditTask(p => ({ ...p, notes: e.target.value }))} rows={2} style={{ ...inputStyle, resize: "vertical" }} /></div>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button onClick={saveTaskEdit} style={{ padding: "6px 14px", fontSize: 12, background: "#2196F3", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontWeight: 600 }}>Save</button>
+                              <button onClick={() => { setEditingTaskId(null); setEditTask({}); }} style={{ padding: "6px 14px", fontSize: 12, background: "#fff", color: "#666", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer" }}>Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: isMobile ? 8 : 12 }}>
+                            <div onClick={() => toggleComplete(task.id)} style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${task.completed ? "#4CAF50" : "#ccc"}`, background: task.completed ? "#4CAF50" : "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1, transition: "all 0.15s" }}>
+                              {task.completed && <span style={{ color: "#fff", fontSize: 14, lineHeight: 1 }}>&#10003;</span>}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                {(task.priority || 2) !== 2 && <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, color: "#fff", background: task.priority === 1 ? "#C62828" : "#9E9E9E", flexShrink: 0 }}>{task.priority === 1 ? "HIGH" : "LOW"}</span>}
+                                <span style={{ fontSize: isMobile ? 13 : 14, fontWeight: 500, color: task.completed ? "#999" : "#1a1a2e", textDecoration: task.completed ? "line-through" : "none" }}>{task.title}</span>
+                                {task.prospectId && getProspectName(task.prospectId) && <span style={{ fontSize: 10, fontWeight: 600, color: "#7C3AED", background: "#EDE9FE", borderRadius: 4, padding: "1px 6px" }}>{getProspectName(task.prospectId)}</span>}
+                                {!task.completed && task.date < today && <span style={{ fontSize: 10, color: "#F57F17", background: "#FFF8E1", padding: "1px 6px", borderRadius: 4, fontWeight: 500 }}>from {toDisplay(task.date)}</span>}
+                              </div>
+                              {task.notes && <div style={{ fontSize: 12, color: task.completed ? "#bbb" : "#777", marginTop: 3 }}>{task.notes}</div>}
+                              {task.completed && task.completedAt && <div style={{ fontSize: 11, color: "#bbb", marginTop: 3 }}>Completed {task.completedAt}</div>}
+                              {isMobile && <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                                <button onClick={() => { setEditingTaskId(task.id); setEditTask({ title: task.title, date: task.date, notes: task.notes, priority: task.priority || 2 }); }} style={{ padding: "4px 10px", fontSize: 11, background: "#fff", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer", color: "#555" }}>Edit</button>
+                                {confirmDeleteTask === task.id ? (
+                                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                    <button onClick={() => deleteTask(task.id)} style={{ padding: "4px 10px", fontSize: 11, background: "#C62828", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontWeight: 600 }}>Delete</button>
+                                    <button onClick={() => setConfirmDeleteTask(null)} style={{ padding: "4px 8px", fontSize: 11, background: "#fff", color: "#666", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer" }}>No</button>
+                                  </div>
+                                ) : (
+                                  <button onClick={() => setConfirmDeleteTask(task.id)} style={{ padding: "4px 10px", fontSize: 11, background: "#fff", color: "#C62828", border: "1px solid #EF9A9A", borderRadius: 4, cursor: "pointer" }}>Del</button>
+                                )}
+                              </div>}
+                            </div>
+                            {!isMobile && <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                              <button onClick={() => { setEditingTaskId(task.id); setEditTask({ title: task.title, date: task.date, notes: task.notes, priority: task.priority || 2 }); }} style={{ padding: "4px 10px", fontSize: 11, background: "#fff", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer", color: "#555" }}>Edit</button>
+                              {confirmDeleteTask === task.id ? (
+                                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                  <button onClick={() => deleteTask(task.id)} style={{ padding: "4px 10px", fontSize: 11, background: "#C62828", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontWeight: 600 }}>Delete</button>
+                                  <button onClick={() => setConfirmDeleteTask(null)} style={{ padding: "4px 8px", fontSize: 11, background: "#fff", color: "#666", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer" }}>No</button>
+                                </div>
+                              ) : (
+                                <button onClick={() => setConfirmDeleteTask(task.id)} style={{ padding: "4px 10px", fontSize: 11, background: "#fff", color: "#C62828", border: "1px solid #EF9A9A", borderRadius: 4, cursor: "pointer" }}>Delete</button>
+                              )}
+                            </div>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    /* ================================================================
+       PROSPECTING PAGE
+       ================================================================ */
+    function ProspectingPage({ prospects, setProspects, tasks, setTasks, isMobile }) {
+      const [showAdd, setShowAdd] = useState(false);
+      const [search, setSearch] = useState("");
+      const [sectorFilter, setSectorFilter] = useState("All");
+      const [expandedId, setExpandedId] = useState(null);
+      const [newProspect, setNewProspect] = useState({ name: "", sector: "", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", extraContacts: [], notes: [], initialNote: "" });
+      const [newNoteText, setNewNoteText] = useState({});
+      const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+      const [editingId, setEditingId] = useState(null);
+      const [editData, setEditData] = useState({});
+      const [taskForm, setTaskForm] = useState(null);
+      const [sortBy, setSortBy] = useState("name");
+
+      const today = toDateStr(new Date());
+      const sectors = [...new Set(prospects.map(p => p.sector).filter(Boolean))].sort();
+
+      const filtered = useMemo(() => {
+        let list = prospects;
+        if (sectorFilter !== "All") list = list.filter(p => p.sector === sectorFilter);
+        if (search) list = list.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.contact1.toLowerCase().includes(search.toLowerCase()) || p.contact2.toLowerCase().includes(search.toLowerCase()));
+        return [...list].sort((a, b) => {
+          if (sortBy === "name") return a.name.localeCompare(b.name);
+          if (sortBy === "contact") return (a.contact1||"").localeCompare(b.contact1||"");
+          if (sortBy === "sector") return (a.sector||"").localeCompare(b.sector||"") || a.name.localeCompare(b.name);
+          if (sortBy === "notes") return (b.notes?.length||0) - (a.notes?.length||0);
+          if (sortBy === "recent") { const aDate = a.lastContacted||""; const bDate = b.lastContacted||""; if (!aDate && !bDate) return 0; if (!aDate) return 1; if (!bDate) return -1; return bDate.localeCompare(aDate); }
+          return 0;
+        });
+      }, [prospects, sectorFilter, search, sortBy]);
+
+      const stats = useMemo(() => {
+        const thisMonth = new Date();
+        thisMonth.setDate(1);
+        const contacted = prospects.filter(p => p.lastContacted && new Date(p.lastContacted) >= thisMonth).length;
+        return {
+          total: prospects.length,
+          withNotes: prospects.filter(p => p.notes && p.notes.length > 0).length,
+          contactedThisMonth: contacted,
+          sectors: sectors.length
+        };
+      }, [prospects, sectors]);
+
+      const addProspect = () => {
+        if (!newProspect.name.trim()) return;
+        const id = prospects.length > 0 ? Math.max(...prospects.map(p => p.id)) + 1 : 1;
+        const initialNotes = newProspect.initialNote && newProspect.initialNote.trim() ? [{ id: Date.now(), text: newProspect.initialNote.trim(), date: today, timestamp: new Date().toLocaleString() }] : [];
+        const { initialNote, ...prospectData } = newProspect;
+        setProspects(prev => [...prev, { ...prospectData, id, extraContacts: newProspect.extraContacts || [], notes: initialNotes, lastContacted: initialNotes.length > 0 ? today : null }]);
+        setNewProspect({ name: "", sector: "", address: "", phone: "", contact1: "", contact2: "", email1: "", email2: "", extraContacts: [], notes: [], initialNote: "" });
+        setShowAdd(false);
+      };
+
+      const addNote = (prospectId, text) => {
+        if (!text.trim()) return;
+        const now = new Date();
+        setProspects(prev => prev.map(p => p.id === prospectId ? {
+          ...p,
+          notes: [{ id: Date.now(), text, date: today, timestamp: now.toLocaleString() }, ...p.notes]
+        } : p));
+        setNewNoteText(prev => ({ ...prev, [prospectId]: "" }));
+      };
+
+      const deleteNote = (prospectId, noteId) => {
+        setProspects(prev => prev.map(p => p.id === prospectId ? { ...p, notes: p.notes.filter(n => n.id !== noteId) } : p));
+      };
+
+      const openTaskForm = (prospectId) => {
+        const prospect = prospects.find(p => p.id === prospectId);
+        setTaskForm({ prospectId, title: `Follow up: ${prospect.name}`, date: today, notes: `Follow up with ${prospect.name}` });
+      };
+
+      const submitTaskForm = () => {
+        if (!taskForm || !taskForm.title.trim()) return;
+        const id = tasks.length > 0 ? Math.max(...tasks.map(t => t.id)) + 1 : 1;
+        setTasks(prev => [...prev, { id, title: taskForm.title, date: taskForm.date, notes: taskForm.notes || "", completed: false, completedAt: null, prospectId: taskForm.prospectId || null }]);
+        setProspects(prev => prev.map(p => p.id === taskForm.prospectId ? { ...p, lastContacted: today } : p));
+        setTaskForm(null);
+      };
+
+      const startEdit = (prospect) => { setEditingId(prospect.id); setEditData({ ...prospect }); };
+
+      const saveEdit = () => {
+        setProspects(prev => prev.map(p => p.id === editingId ? { ...p, ...editData } : p));
+        setEditingId(null); setEditData({});
+      };
+
+      const deleteProspect = (id) => {
+        setProspects(prev => prev.filter(p => p.id !== id));
+        setConfirmDeleteId(null);
+        setExpandedId(null);
+      };
+
+      return (
+        <div>
+          {/* Stats */}
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: isMobile ? 8 : 12, marginBottom: isMobile ? 12 : 20 }}>
+            <div style={{ padding: isMobile ? "10px 12px" : "14px 16px", borderRadius: 10, background: "#fff", border: "1.5px solid #E0E0E0" }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "#999", marginBottom: 2 }}>Prospects</div>
+              <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: "#5B21B6" }}>{stats.total}</div>
+            </div>
+            <div style={{ padding: isMobile ? "10px 12px" : "14px 16px", borderRadius: 10, background: "#fff", border: "1.5px solid #E0E0E0" }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "#999", marginBottom: 2 }}>With Notes</div>
+              <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: "#5B21B6" }}>{stats.withNotes}</div>
+            </div>
+            <div style={{ padding: isMobile ? "10px 12px" : "14px 16px", borderRadius: 10, background: "#fff", border: "1.5px solid #E0E0E0" }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "#999", marginBottom: 2 }}>This Month</div>
+              <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: "#5B21B6" }}>{stats.contactedThisMonth}</div>
+            </div>
+            <div style={{ padding: isMobile ? "10px 12px" : "14px 16px", borderRadius: 10, background: "#fff", border: "1.5px solid #E0E0E0" }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "#999", marginBottom: 2 }}>Sectors</div>
+              <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: "#5B21B6" }}>{stats.sectors}</div>
+            </div>
+          </div>
+
+          {/* Controls */}
+          <div style={{ display: "flex", gap: isMobile ? 6 : 10, marginBottom: isMobile ? 10 : 16, alignItems: "center", flexWrap: "wrap" }}>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." style={{ ...inputStyle, width: isMobile ? "100%" : 240, padding: "8px 12px" }} />
+            <select value={sectorFilter} onChange={e => setSectorFilter(e.target.value)} style={{ ...inputStyle, width: isMobile ? "auto" : 150, padding: "8px 12px", flex: isMobile ? 1 : "none" }}>
+              <option value="All">All Sectors</option>
+              {sectors.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ ...inputStyle, width: isMobile ? "auto" : 170, padding: "8px 12px", flex: isMobile ? 1 : "none" }}>
+              <option value="name">Sort: Name</option>
+              <option value="contact">Sort: Contact</option>
+              <option value="sector">Sort: Sector</option>
+              <option value="notes">Sort: Notes</option>
+              <option value="recent">Sort: Recent</option>
+            </select>
+            {!isMobile && <div style={{ flex: 1 }} />}
+            <button onClick={() => setShowAdd(!showAdd)} style={{ padding: "8px 16px", background: "#7C3AED", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600, width: isMobile ? "100%" : "auto" }}>+ Add Prospect</button>
+          </div>
+
+          {/* Add Prospect Form */}
+          {showAdd && (
+            <div style={{ background: "#fff", border: "2px solid #7C3AED", borderRadius: 10, padding: 20, marginBottom: 16 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: "#5B21B6" }}>New Prospect</div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+                <div><label style={{ fontSize: 11, color: "#666" }}>Name</label><input value={newProspect.name} onChange={e => setNewProspect(p => ({ ...p, name: e.target.value }))} placeholder="Prospect name" style={inputStyle} /></div>
+                <div><label style={{ fontSize: 11, color: "#666" }}>Sector</label><input value={newProspect.sector} onChange={e => setNewProspect(p => ({ ...p, sector: e.target.value }))} placeholder="e.g., K-12, Municipal" style={inputStyle} /></div>
+                <div><label style={{ fontSize: 11, color: "#666" }}>Phone</label><input value={newProspect.phone} onChange={e => setNewProspect(p => ({ ...p, phone: e.target.value }))} placeholder="Phone" style={inputStyle} /></div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                <div><label style={{ fontSize: 11, color: "#666" }}>Address</label><input value={newProspect.address} onChange={e => setNewProspect(p => ({ ...p, address: e.target.value }))} placeholder="Address" style={inputStyle} /></div>
+                <div><label style={{ fontSize: 11, color: "#666" }}>Contact 1</label><input value={newProspect.contact1} onChange={e => setNewProspect(p => ({ ...p, contact1: e.target.value }))} placeholder="First contact name" style={inputStyle} /></div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                <div><label style={{ fontSize: 11, color: "#666" }}>Contact 2</label><input value={newProspect.contact2} onChange={e => setNewProspect(p => ({ ...p, contact2: e.target.value }))} placeholder="Second contact name" style={inputStyle} /></div>
+                <div><label style={{ fontSize: 11, color: "#666" }}>Email 1</label><input value={newProspect.email1} onChange={e => setNewProspect(p => ({ ...p, email1: e.target.value }))} placeholder="Email 1" style={inputStyle} /></div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                <div><label style={{ fontSize: 11, color: "#666" }}>Email 2</label><input value={newProspect.email2} onChange={e => setNewProspect(p => ({ ...p, email2: e.target.value }))} placeholder="Email 2" style={inputStyle} /></div>
+              </div>
+              {/* Extra Contacts */}
+              {(newProspect.extraContacts || []).map((ec, idx) => (
+                <div key={idx} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr auto" : "1fr 1fr auto", gap: 10, marginBottom: 8, background: "#F5F6F8", borderRadius: 6, padding: 10 }}>
+                  <div><label style={{ fontSize: 11, color: "#666" }}>Contact {idx + 3}</label><input value={ec.name} onChange={e => { const updated = [...newProspect.extraContacts]; updated[idx] = { ...ec, name: e.target.value }; setNewProspect(p => ({ ...p, extraContacts: updated })); }} placeholder="Contact name" style={inputStyle} /></div>
+                  {!isMobile && <div><label style={{ fontSize: 11, color: "#666" }}>Email</label><input value={ec.email} onChange={e => { const updated = [...newProspect.extraContacts]; updated[idx] = { ...ec, email: e.target.value }; setNewProspect(p => ({ ...p, extraContacts: updated })); }} placeholder="Email" style={inputStyle} /></div>}
+                  <div style={{ display: "flex", alignItems: "flex-end" }}><button onClick={() => setNewProspect(p => ({ ...p, extraContacts: p.extraContacts.filter((_, i) => i !== idx) }))} style={{ padding: "6px 10px", fontSize: 11, background: "#fff", color: "#C62828", border: "1px solid #EF9A9A", borderRadius: 4, cursor: "pointer" }}>Remove</button></div>
+                  {isMobile && <div style={{ gridColumn: "1 / -1" }}><label style={{ fontSize: 11, color: "#666" }}>Email</label><input value={ec.email} onChange={e => { const updated = [...newProspect.extraContacts]; updated[idx] = { ...ec, email: e.target.value }; setNewProspect(p => ({ ...p, extraContacts: updated })); }} placeholder="Email" style={inputStyle} /></div>}
+                </div>
+              ))}
+              <button onClick={() => setNewProspect(p => ({ ...p, extraContacts: [...(p.extraContacts || []), { name: "", email: "" }] }))} style={{ padding: "6px 14px", fontSize: 12, background: "#fff", color: "#7C3AED", border: "1.5px solid #7C3AED", borderRadius: 6, cursor: "pointer", fontWeight: 500, marginBottom: 12 }}>+ Add Another Contact</button>
+              {/* Initial Note */}
+              <div style={{ marginBottom: 12 }}><label style={{ fontSize: 11, color: "#666" }}>Initial Note (optional)</label><textarea value={newProspect.initialNote || ""} onChange={e => setNewProspect(p => ({ ...p, initialNote: e.target.value }))} rows={2} placeholder="Add an initial note about this prospect..." style={{ ...inputStyle, resize: "vertical" }} /></div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={addProspect} disabled={!newProspect.name} style={{ padding: "8px 20px", background: newProspect.name ? "#7C3AED" : "#ccc", color: "#fff", border: "none", borderRadius: 6, cursor: newProspect.name ? "pointer" : "default", fontWeight: 600, fontSize: 13 }}>Save</button>
+                <button onClick={() => setShowAdd(false)} style={{ padding: "8px 20px", background: "#fff", color: "#666", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer", fontSize: 13 }}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* Prospects List */}
+          {isMobile ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {filtered.map((prospect) => {
+              const isExpanded = expandedId === prospect.id;
+              const lastNote = prospect.notes && prospect.notes.length > 0 ? prospect.notes[0] : null;
+              return (
+                <div key={prospect.id} style={{ background: isExpanded ? "#EDE9FE" : "#fff", borderRadius: 10, border: "1px solid #e0e0e0", overflow: "hidden" }}>
+                  <div onClick={() => setExpandedId(isExpanded ? null : prospect.id)} style={{ padding: "12px 14px", cursor: "pointer" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: "#1a1a2e" }}>{prospect.name}</div>
+                      {prospect.sector && <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, background: "#EDE9FE", color: "#5B21B6", fontWeight: 500 }}>{prospect.sector}</span>}
+                    </div>
+                    {prospect.contact1 && <div style={{ fontSize: 12, color: "#666" }}>{prospect.contact1}</div>}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                      <span style={{ fontSize: 11, color: "#999" }}>{prospect.notes ? prospect.notes.length : 0} notes</span>
+                      {lastNote && <span style={{ fontSize: 11, color: "#999" }}>{lastNote.timestamp}</span>}
+                    </div>
+                  </div>
+                  {isExpanded && (
+                    <div style={{ padding: "12px 14px", borderTop: "1px solid #D1C4E9" }}>
+                      {editingId === prospect.id ? (
+                        <div style={{ background: "rgba(255,255,255,0.7)", border: "1.5px solid #7C3AED", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "#5B21B6", marginBottom: 8 }}>Edit Prospect</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8, marginBottom: 8 }}>
+                            <div><label style={{ fontSize: 11, color: "#666" }}>Name</label><input value={editData.name||""} onChange={e => setEditData(p => ({ ...p, name: e.target.value }))} style={inputStyle} /></div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                              <div><label style={{ fontSize: 11, color: "#666" }}>Sector</label><input value={editData.sector||""} onChange={e => setEditData(p => ({ ...p, sector: e.target.value }))} style={inputStyle} /></div>
+                              <div><label style={{ fontSize: 11, color: "#666" }}>Phone</label><input value={editData.phone||""} onChange={e => setEditData(p => ({ ...p, phone: e.target.value }))} style={inputStyle} /></div>
+                            </div>
+                            <div><label style={{ fontSize: 11, color: "#666" }}>Contact 1</label><input value={editData.contact1||""} onChange={e => setEditData(p => ({ ...p, contact1: e.target.value }))} style={inputStyle} /></div>
+                            <div><label style={{ fontSize: 11, color: "#666" }}>Email 1</label><input value={editData.email1||""} onChange={e => setEditData(p => ({ ...p, email1: e.target.value }))} style={inputStyle} /></div>
+                          </div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button onClick={saveEdit} style={{ padding: "7px 18px", background: "#7C3AED", color: "#fff", border: "none", borderRadius: 5, cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Save</button>
+                            <button onClick={() => { setEditingId(null); setEditData({}); }} style={{ padding: "7px 18px", background: "#fff", color: "#666", border: "1px solid #ddd", borderRadius: 5, cursor: "pointer", fontSize: 13 }}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ marginBottom: 12 }}>
+                          {prospect.phone && <div style={{ fontSize: 12, color: "#444", marginBottom: 4 }}><span style={{ color: "#999" }}>Phone:</span> {prospect.phone}</div>}
+                          {prospect.contact2 && <div style={{ fontSize: 12, color: "#444", marginBottom: 4 }}><span style={{ color: "#999" }}>Contact 2:</span> {prospect.contact2}</div>}
+                          {prospect.email1 && <div style={{ fontSize: 12, color: "#444", marginBottom: 4 }}><span style={{ color: "#999" }}>Email 1:</span> {prospect.email1}</div>}
+                          {prospect.email2 && <div style={{ fontSize: 12, color: "#444", marginBottom: 4 }}><span style={{ color: "#999" }}>Email 2:</span> {prospect.email2}</div>}
+                          {(prospect.extraContacts || []).map((ec, idx) => (
+                            <div key={idx} style={{ fontSize: 12, color: "#444", marginBottom: 4 }}>
+                              {ec.name && <span><span style={{ color: "#999" }}>Contact {idx + 3}:</span> {ec.name}</span>}
+                              {ec.name && ec.email && <span> — </span>}
+                              {ec.email && <span style={{ color: "#666" }}>{ec.email}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {/* Notes */}
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#5B21B6", marginBottom: 6 }}>Notes ({prospect.notes ? prospect.notes.length : 0})</div>
+                        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                          <input value={newNoteText[prospect.id] || ""} onChange={e => setNewNoteText(p => ({ ...p, [prospect.id]: e.target.value }))} placeholder="Add a note..." style={{ ...inputStyle, flex: 1 }} onKeyDown={e => e.key === "Enter" && addNote(prospect.id, newNoteText[prospect.id])} />
+                          <button onClick={() => addNote(prospect.id, newNoteText[prospect.id])} style={{ padding: "6px 10px", background: "#7C3AED", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Add</button>
+                        </div>
+                        {prospect.notes && prospect.notes.length > 0 && (
+                          <div style={{ maxHeight: 120, overflowY: "auto", border: "1px solid #E0E0E0", borderRadius: 6, background: "rgba(255,255,255,0.5)" }}>
+                            {prospect.notes.map((note, nIdx) => (
+                              <div key={note.id} style={{ padding: "6px 10px", borderBottom: nIdx < prospect.notes.length - 1 ? "1px solid #f0f0f0" : "none", display: "flex", justifyContent: "space-between", gap: 6 }}>
+                                <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12, color: "#1a1a2e" }}>{note.text}</div><div style={{ fontSize: 10, color: "#999", marginTop: 1 }}>{note.timestamp}</div></div>
+                                <button onClick={() => deleteNote(prospect.id, note.id)} style={{ padding: "2px 6px", fontSize: 10, background: "#fff", color: "#C62828", border: "1px solid #EF9A9A", borderRadius: 3, cursor: "pointer", flexShrink: 0, alignSelf: "flex-start" }}>Del</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {/* Actions */}
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {!(taskForm && taskForm.prospectId === prospect.id) && <button onClick={() => openTaskForm(prospect.id)} style={{ padding: "6px 12px", fontSize: 12, background: "#7C3AED", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontWeight: 600 }}>Create Task</button>}
+                        <button onClick={() => startEdit(prospect)} style={{ padding: "6px 12px", fontSize: 12, background: "#fff", color: "#555", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer" }}>Edit</button>
+                        {confirmDeleteId === prospect.id ? (
+                          <React.Fragment>
+                            <button onClick={() => deleteProspect(prospect.id)} style={{ padding: "6px 12px", fontSize: 12, background: "#C62828", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontWeight: 600 }}>Delete</button>
+                            <button onClick={() => setConfirmDeleteId(null)} style={{ padding: "6px 10px", fontSize: 12, background: "#fff", color: "#666", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer" }}>No</button>
+                          </React.Fragment>
+                        ) : (
+                          <button onClick={() => setConfirmDeleteId(prospect.id)} style={{ padding: "6px 12px", fontSize: 12, background: "#fff", color: "#C62828", border: "1px solid #EF9A9A", borderRadius: 4, cursor: "pointer" }}>Del</button>
+                        )}
+                      </div>
+                      {/* Task Creation Form */}
+                      {taskForm && taskForm.prospectId === prospect.id && (
+                        <div style={{ background: "rgba(255,255,255,0.7)", border: "1.5px solid #7C3AED", borderRadius: 8, padding: 12, marginTop: 10 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "#5B21B6", marginBottom: 6 }}>Create Task</div>
+                          <div><label style={{ fontSize: 11, color: "#666" }}>Title</label><input value={taskForm.title} onChange={e => setTaskForm(p => ({ ...p, title: e.target.value }))} style={inputStyle} /></div>
+                          <div style={{ marginTop: 6 }}><label style={{ fontSize: 11, color: "#666" }}>Date</label><input type="date" value={taskForm.date} onChange={e => setTaskForm(p => ({ ...p, date: e.target.value }))} style={inputStyle} /></div>
+                          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                            <button onClick={submitTaskForm} style={{ padding: "6px 14px", fontSize: 12, background: "#7C3AED", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontWeight: 600 }}>Add</button>
+                            <button onClick={() => setTaskForm(null)} style={{ padding: "6px 14px", fontSize: 12, background: "#fff", color: "#666", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer" }}>Cancel</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          ) : (
+          <div style={{ background: "#fff", borderRadius: 10, border: "1px solid #e0e0e0", overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: "#F5F6F8" }}>
+                  <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600, color: "#555", borderBottom: "2px solid #e0e0e0", fontSize: 12, width: 200 }}>Name</th>
+                  <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600, color: "#555", borderBottom: "2px solid #e0e0e0", fontSize: 12, width: 120 }}>Sector</th>
+                  <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600, color: "#555", borderBottom: "2px solid #e0e0e0", fontSize: 12, width: 150 }}>Contacts</th>
+                  <th style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600, color: "#555", borderBottom: "2px solid #e0e0e0", fontSize: 12, width: 150 }}>Last Note</th>
+                  <th style={{ padding: "10px 12px", textAlign: "center", fontWeight: 600, color: "#555", borderBottom: "2px solid #e0e0e0", fontSize: 12, width: 70 }}># Notes</th>
+                  <th style={{ padding: "10px 12px", textAlign: "center", fontWeight: 600, color: "#555", borderBottom: "2px solid #e0e0e0", fontSize: 12, width: 60 }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((prospect, idx) => {
+                  const isExpanded = expandedId === prospect.id;
+                  const lastNote = prospect.notes && prospect.notes.length > 0 ? prospect.notes[0] : null;
+                  return (
+                    <React.Fragment key={prospect.id}>
+                      <tr onClick={() => setExpandedId(isExpanded ? null : prospect.id)} style={{ borderBottom: "1px solid #f0f0f0", cursor: "pointer", background: isExpanded ? "#EDE9FE" : "transparent", transition: "background 0.1s" }} onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = "#F5F6F8" }} onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = "transparent" }}>
+                        <td style={{ padding: "10px 12px", fontWeight: 500, color: "#1a1a2e" }}>{prospect.name}</td>
+                        <td style={{ padding: "10px 12px" }}>
+                          {prospect.sector && <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: "#EDE9FE", color: "#5B21B6", fontWeight: 500 }}>{prospect.sector}</span>}
+                        </td>
+                        <td style={{ padding: "10px 12px", color: "#444", fontSize: 12 }}>
+                          {prospect.contact1 && <div>{prospect.contact1}</div>}
+                          {prospect.contact2 && <div>{prospect.contact2}</div>}
+                        </td>
+                        <td style={{ padding: "10px 12px", color: "#666", fontSize: 12 }}>
+                          {lastNote ? lastNote.timestamp : "—"}
+                        </td>
+                        <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 500, color: "#5B21B6" }}>
+                          {prospect.notes ? prospect.notes.length : 0}
+                        </td>
+                        <td style={{ padding: "10px 12px", textAlign: "center" }} onClick={e => e.stopPropagation()}>
+                          {confirmDeleteId === prospect.id ? (
+                            <div style={{ display: "flex", gap: 4, alignItems: "center", justifyContent: "center" }}>
+                              <button onClick={() => deleteProspect(prospect.id)} style={{ padding: "4px 10px", fontSize: 11, background: "#C62828", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontWeight: 600 }}>Delete</button>
+                              <button onClick={() => setConfirmDeleteId(null)} style={{ padding: "4px 8px", fontSize: 11, background: "#fff", color: "#666", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer" }}>No</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setConfirmDeleteId(prospect.id)} style={{ padding: "4px 10px", fontSize: 11, background: "#fff", color: "#C62828", border: "1px solid #EF9A9A", borderRadius: 4, cursor: "pointer" }}>Delete</button>
+                          )}
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr style={{ background: "#EDE9FE" }}>
+                          <td colSpan={6} style={{ padding: "16px 20px" }}>
+                            {/* Edit Form or Details */}
+                            {editingId === prospect.id ? (
+                              <div style={{ background: "rgba(255,255,255,0.7)", border: "1.5px solid #7C3AED", borderRadius: 8, padding: 14, marginBottom: 14 }}>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: "#5B21B6", marginBottom: 10 }}>Edit Prospect</div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+                                  <div><label style={{ fontSize: 11, color: "#666" }}>Name</label><input value={editData.name||""} onChange={e => setEditData(p => ({ ...p, name: e.target.value }))} style={inputStyle} /></div>
+                                  <div><label style={{ fontSize: 11, color: "#666" }}>Sector</label><input value={editData.sector||""} onChange={e => setEditData(p => ({ ...p, sector: e.target.value }))} style={inputStyle} /></div>
+                                  <div><label style={{ fontSize: 11, color: "#666" }}>Phone</label><input value={editData.phone||""} onChange={e => setEditData(p => ({ ...p, phone: e.target.value }))} style={inputStyle} /></div>
+                                </div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                                  <div><label style={{ fontSize: 11, color: "#666" }}>Address</label><input value={editData.address||""} onChange={e => setEditData(p => ({ ...p, address: e.target.value }))} style={inputStyle} /></div>
+                                  <div><label style={{ fontSize: 11, color: "#666" }}>Contact 1</label><input value={editData.contact1||""} onChange={e => setEditData(p => ({ ...p, contact1: e.target.value }))} style={inputStyle} /></div></div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+                                  <div><label style={{ fontSize: 11, color: "#666" }}>Contact 2</label><input value={editData.contact2||""} onChange={e => setEditData(p => ({ ...p, contact2: e.target.value }))} style={inputStyle} /></div>
+                                  <div><label style={{ fontSize: 11, color: "#666" }}>Email 1</label><input value={editData.email1||""} onChange={e => setEditData(p => ({ ...p, email1: e.target.value }))} style={inputStyle} /></div>
+                                  <div><label style={{ fontSize: 11, color: "#666" }}>Email 2</label><input value={editData.email2||""} onChange={e => setEditData(p => ({ ...p, email2: e.target.value }))} style={inputStyle} /></div>
+                                </div>
+                                {/* Extra Contacts */}
+                                {(editData.extraContacts || []).map((ec, idx) => (
+                                  <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 10, marginBottom: 8, background: "#F5F6F8", borderRadius: 6, padding: 10 }}>
+                                    <div><label style={{ fontSize: 11, color: "#666" }}>Contact {idx + 3}</label><input value={ec.name||""} onChange={e => { const updated = [...(editData.extraContacts || [])]; updated[idx] = { ...ec, name: e.target.value }; setEditData(p => ({ ...p, extraContacts: updated })); }} style={inputStyle} /></div>
+                                    <div><label style={{ fontSize: 11, color: "#666" }}>Email {idx + 3}</label><input value={ec.email||""} onChange={e => { const updated = [...(editData.extraContacts || [])]; updated[idx] = { ...ec, email: e.target.value }; setEditData(p => ({ ...p, extraContacts: updated })); }} style={inputStyle} /></div>
+                                    <div style={{ display: "flex", alignItems: "flex-end" }}><button onClick={() => setEditData(p => ({ ...p, extraContacts: (p.extraContacts || []).filter((_, i) => i !== idx) }))} style={{ padding: "6px 10px", fontSize: 11, background: "#fff", color: "#C62828", border: "1px solid #EF9A9A", borderRadius: 4, cursor: "pointer" }}>Remove</button></div>
+                                  </div>
+                                ))}
+                                <button onClick={() => setEditData(p => ({ ...p, extraContacts: [...(p.extraContacts || []), { name: "", email: "" }] }))} style={{ padding: "6px 14px", fontSize: 12, background: "#fff", color: "#7C3AED", border: "1.5px solid #7C3AED", borderRadius: 6, cursor: "pointer", fontWeight: 500, marginBottom: 12 }}>+ Add Another Contact</button>
+                                <div style={{ display: "flex", gap: 8 }}>
+                                  <button onClick={saveEdit} style={{ padding: "7px 18px", background: "#7C3AED", color: "#fff", border: "none", borderRadius: 5, cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Save Changes</button>
+                                  <button onClick={() => { setEditingId(null); setEditData({}); }} style={{ padding: "7px 18px", background: "#fff", color: "#666", border: "1px solid #ddd", borderRadius: 5, cursor: "pointer", fontSize: 13 }}>Cancel</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ marginBottom: 16 }}>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                                  {prospect.address && <div><span style={{ fontSize: 11, color: "#999" }}>Address:</span> <div style={{ fontSize: 13, color: "#1a1a2e", marginTop: 2 }}>{prospect.address}</div></div>}
+                                  {prospect.phone && <div><span style={{ fontSize: 11, color: "#999" }}>Phone:</span> <div style={{ fontSize: 13, color: "#1a1a2e", marginTop: 2 }}>{prospect.phone}</div></div>}
+                                  {prospect.contact1 && <div><span style={{ fontSize: 11, color: "#999" }}>Contact 1:</span> <div style={{ fontSize: 13, color: "#1a1a2e", marginTop: 2 }}>{prospect.contact1}</div></div>}
+                                  {prospect.contact2 && <div><span style={{ fontSize: 11, color: "#999" }}>Contact 2:</span> <div style={{ fontSize: 13, color: "#1a1a2e", marginTop: 2 }}>{prospect.contact2}</div></div>}
+                                  {prospect.email1 && <div><span style={{ fontSize: 11, color: "#999" }}>Email 1:</span> <div style={{ fontSize: 13, color: "#1a1a2e", marginTop: 2 }}>{prospect.email1}</div></div>}
+                                  {prospect.email2 && <div><span style={{ fontSize: 11, color: "#999" }}>Email 2:</span> <div style={{ fontSize: 13, color: "#1a1a2e", marginTop: 2 }}>{prospect.email2}</div></div>}
+                                  {(prospect.extraContacts || []).map((ec, idx) => (
+                                    <React.Fragment key={idx}>
+                                      {ec.name && <div><span style={{ fontSize: 11, color: "#999" }}>Contact {idx + 3}:</span> <div style={{ fontSize: 13, color: "#1a1a2e", marginTop: 2 }}>{ec.name}</div></div>}
+                                      {ec.email && <div><span style={{ fontSize: 11, color: "#999" }}>Email {idx + 3}:</span> <div style={{ fontSize: 13, color: "#1a1a2e", marginTop: 2 }}>{ec.email}</div></div>}
+                                    </React.Fragment>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Notes Section */}
+                            <div style={{ marginBottom: 14 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: "#5B21B6", marginBottom: 8 }}>Notes ({prospect.notes ? prospect.notes.length : 0})</div>
+                              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                                <input
+                                  value={newNoteText[prospect.id] || ""}
+                                  onChange={e => setNewNoteText(p => ({ ...p, [prospect.id]: e.target.value }))}
+                                  placeholder="Add a note..."
+                                  style={{ ...inputStyle, flex: 1 }}
+                                  onKeyDown={e => e.key === "Enter" && addNote(prospect.id, newNoteText[prospect.id])}
+                                />
+                                <button onClick={() => addNote(prospect.id, newNoteText[prospect.id])} style={{ padding: "6px 12px", background: "#7C3AED", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>Add Note</button>
+                              </div>
+                              {prospect.notes && prospect.notes.length > 0 ? (
+                                <div style={{ maxHeight: 150, overflowY: "auto", border: "1px solid #E0E0E0", borderRadius: 6, background: "rgba(255,255,255,0.5)" }}>
+                                  {prospect.notes.map((note, nIdx) => (
+                                    <div key={note.id} style={{ padding: "8px 12px", borderBottom: nIdx < prospect.notes.length - 1 ? "1px solid #f0f0f0" : "none", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: 12, color: "#1a1a2e" }}>{note.text}</div>
+                                        <div style={{ fontSize: 10, color: "#999", marginTop: 2 }}>{note.timestamp}</div>
+                                      </div>
+                                      <button onClick={() => deleteNote(prospect.id, note.id)} style={{ padding: "2px 6px", fontSize: 10, background: "#fff", color: "#C62828", border: "1px solid #EF9A9A", borderRadius: 3, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>Delete</button>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: 12, color: "#999", padding: "12px", textAlign: "center", background: "rgba(255,255,255,0.5)", borderRadius: 6 }}>No notes yet</div>
+                              )}
+                            </div>
+
+                            {/* Task Creation Form */}
+                            {taskForm && taskForm.prospectId === prospect.id ? (
+                              <div style={{ background: "rgba(255,255,255,0.7)", border: "1.5px solid #7C3AED", borderRadius: 8, padding: 14, marginBottom: 10 }}>
+                                <div style={{ fontSize: 12, fontWeight: 600, color: "#5B21B6", marginBottom: 8 }}>Create To-Do Task</div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 160px", gap: 10, marginBottom: 8 }}>
+                                  <div><label style={{ fontSize: 11, color: "#666" }}>Task Title</label><input value={taskForm.title} onChange={e => setTaskForm(p => ({ ...p, title: e.target.value }))} style={inputStyle} /></div>
+                                  <div><label style={{ fontSize: 11, color: "#666" }}>Date</label><input type="date" value={taskForm.date} onChange={e => setTaskForm(p => ({ ...p, date: e.target.value }))} style={inputStyle} /></div>
+                                </div>
+                                <div style={{ marginBottom: 10 }}><label style={{ fontSize: 11, color: "#666" }}>Notes</label><textarea value={taskForm.notes} onChange={e => setTaskForm(p => ({ ...p, notes: e.target.value }))} rows={2} style={{ ...inputStyle, resize: "vertical" }} /></div>
+                                <div style={{ display: "flex", gap: 8 }}>
+                                  <button onClick={submitTaskForm} style={{ padding: "6px 14px", fontSize: 12, background: "#7C3AED", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontWeight: 600 }}>Add to To-Do</button>
+                                  <button onClick={() => setTaskForm(null)} style={{ padding: "6px 14px", fontSize: 12, background: "#fff", color: "#666", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer" }}>Cancel</button>
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {/* Actions */}
+                            <div style={{ display: "flex", gap: 8 }}>
+                              {!(taskForm && taskForm.prospectId === prospect.id) && <button onClick={() => openTaskForm(prospect.id)} style={{ padding: "6px 14px", fontSize: 12, background: "#7C3AED", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontWeight: 600 }}>Create Task</button>}
+                              <button onClick={() => startEdit(prospect)} style={{ padding: "6px 14px", fontSize: 12, background: "#fff", color: "#555", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer" }}>Edit Details</button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+            {filtered.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "#999" }}>No prospects match your filters</div>}
+          </div>
+          )}
+          {filtered.length === 0 && isMobile && <div style={{ padding: 30, textAlign: "center", color: "#999", background: "#fff", borderRadius: 10, border: "1px solid #e0e0e0" }}>No prospects match your filters</div>}
+          <div style={{ marginTop: 12, fontSize: 12, color: "#999", textAlign: "center" }}>Showing {filtered.length} of {prospects.length} prospects</div>
+        </div>
+      );
+    }
+
+    /* ================================================================
+       PIPELINE PAGE
+       ================================================================ */
+    function PipelinePage({ accounts, setAccounts, changeLog, setChangeLog, isMobile }) {
+      const [filter, setFilter] = useState("All");
+      const [typeFilter, setTypeFilter] = useState("All");
+      const [search, setSearch] = useState("");
+      const [sortKey, setSortKey] = useState(null);
+      const [sortDir, setSortDir] = useState("asc");
+      const [expandedId, setExpandedId] = useState(null);
+      const [editingId, setEditingId] = useState(null);
+      const [editData, setEditData] = useState({});
+      const [showAdd, setShowAdd] = useState(false);
+      const [newAccount, setNewAccount] = useState({ status: "C", name: "", type: "K-12", amount: "", likelihood: "", contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" });
+      const [showLog, setShowLog] = useState(false);
+      const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+      const types = [...new Set(accounts.map(a => a.type))].sort();
+      const statusOrder = { A: 0, B: 1, C: 2 };
+
+      const filtered = useMemo(() => {
+        let list = accounts;
+        if (filter !== "All") list = list.filter(a => a.status === filter);
+        if (typeFilter !== "All") list = list.filter(a => a.type === typeFilter);
+        if (search) list = list.filter(a => a.name.toLowerCase().includes(search.toLowerCase()) || a.contact.toLowerCase().includes(search.toLowerCase()) || a.notes.toLowerCase().includes(search.toLowerCase()));
+        list = [...list].sort((a, b) => {
+          const gd = statusOrder[a.status] - statusOrder[b.status];
+          if (gd !== 0) return gd;
+          if (sortKey) {
+            let va = a[sortKey], vb = b[sortKey];
+            if (va == null) return 1; if (vb == null) return -1;
+            if (typeof va === "string") return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
+            return sortDir === "asc" ? va - vb : vb - va;
+          }
+          return 0;
+        });
+        return list;
+      }, [accounts, filter, typeFilter, search, sortKey, sortDir]);
+
+      const totals = useMemo(() => {
+        const calc = (s) => { const items = accounts.filter(a => a.status === s && a.amount); return { count: accounts.filter(a => a.status === s).length, volume: items.reduce((sum, a) => sum + (a.amount || 0), 0), weighted: items.reduce((sum, a) => sum + (a.amount || 0) * (a.likelihood || 0), 0) }; };
+        return { A: calc("A"), B: calc("B"), C: calc("C") };
+      }, [accounts]);
+
+      const handleSort = (key) => { if (sortKey === key) { setSortDir(d => d === "asc" ? "desc" : "asc"); } else { setSortKey(key); setSortDir("asc"); } };
+      const sortIcon = (key) => sortKey === key ? (sortDir === "asc" ? " ↑" : " ↓") : "";
+      const startEdit = (acct) => { setEditingId(acct.id); setEditData({ ...acct }); };
+
+      const saveEdit = () => {
+        const old = accounts.find(a => a.id === editingId);
+        const changes = [];
+        Object.keys(editData).forEach(k => { if (k !== "id" && String(editData[k]) !== String(old[k])) changes.push(`${k}: "${old[k] || ""}" → "${editData[k] || ""}"`) });
+        if (changes.length > 0) setChangeLog(prev => [{ time: new Date().toLocaleString(), account: old.name, changes }, ...prev]);
+        const sc = editData.status !== old.status;
+        setAccounts(prev => prev.map(a => a.id === editingId ? { ...a, ...editData, amount: editData.amount ? Number(editData.amount) : null, likelihood: editData.likelihood ? Number(editData.likelihood) : null, progress: editData.progress ? Number(editData.progress) : null } : a));
+        setEditingId(null); setEditData({});
+        if (sc) setExpandedId(null);
+      };
+
+      const addAccount = () => {
+        const id = Math.max(...accounts.map(a => a.id)) + 1;
+        const acct = { ...newAccount, id, amount: newAccount.amount ? Number(newAccount.amount) : null, likelihood: newAccount.likelihood ? Number(newAccount.likelihood) : null, progress: newAccount.progress ? Number(newAccount.progress) : null };
+        setAccounts(prev => [...prev, acct]);
+        setChangeLog(prev => [{ time: new Date().toLocaleString(), account: acct.name, changes: ["Added new account"] }, ...prev]);
+        setNewAccount({ status: "C", name: "", type: "K-12", amount: "", likelihood: "", contact: "", contact2: "", phone: "", email: "", progress: "", notes: "" });
+        setShowAdd(false);
+      };
+
+      const moveStatus = (id, ns) => {
+        const acct = accounts.find(a => a.id === id);
+        setChangeLog(prev => [{ time: new Date().toLocaleString(), account: acct.name, changes: [`Status: "${acct.status}" → "${ns}"`] }, ...prev]);
+        setAccounts(prev => prev.map(a => a.id === id ? { ...a, status: ns } : a));
+        setExpandedId(null);
+      };
+
+      const deleteAccount = (id) => {
+        const acct = accounts.find(a => a.id === id);
+        setChangeLog(prev => [{ time: new Date().toLocaleString(), account: acct.name, changes: [`Deleted from ${acct.status} list`] }, ...prev]);
+        setAccounts(prev => prev.filter(a => a.id !== id));
+        setExpandedId(null); setEditingId(null); setConfirmDeleteId(null);
+      };
+
+      return (
+        <div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: isMobile ? 8 : 12, marginBottom: isMobile ? 12 : 20 }}>
+            {["A", "B", "C"].map(s => (
+              <div key={s} onClick={() => setFilter(filter === s ? "All" : s)} style={{ padding: isMobile ? "10px 12px" : "16px 18px", borderRadius: 10, background: filter === s ? statusColors[s].badge : "#fff", border: `1.5px solid ${statusColors[s].border}`, cursor: "pointer", transition: "all 0.15s" }}>
+                <div style={{ fontSize: isMobile ? 11 : 13, fontWeight: 600, color: filter === s ? "#fff" : statusColors[s].text, marginBottom: 2 }}>{s} ({totals[s].count})</div>
+                <div style={{ fontSize: isMobile ? 16 : 20, fontWeight: 700, color: filter === s ? "#fff" : "#1a1a2e" }}>{fmt(totals[s].weighted)}</div>
+                {!isMobile && <div style={{ fontSize: 11, color: filter === s ? "rgba(255,255,255,0.8)" : "#999" }}>of {fmt(totals[s].volume)} volume</div>}
+              </div>
+            ))}
+            <div style={{ padding: isMobile ? "10px 12px" : "16px 18px", borderRadius: 10, background: filter === "All" ? "#1a1a2e" : "#fff", border: "1.5px solid #1a1a2e", cursor: "pointer" }} onClick={() => setFilter("All")}>
+              <div style={{ fontSize: isMobile ? 11 : 13, fontWeight: 600, color: filter === "All" ? "#fff" : "#1a1a2e", marginBottom: 2 }}>Total</div>
+              <div style={{ fontSize: isMobile ? 16 : 20, fontWeight: 700, color: filter === "All" ? "#fff" : "#1a1a2e" }}>{fmt(totals.A.weighted + totals.B.weighted + totals.C.weighted)}</div>
+              {!isMobile && <div style={{ fontSize: 11, color: filter === "All" ? "rgba(255,255,255,0.7)" : "#999" }}>weighted value</div>}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: isMobile ? 6 : 10, marginBottom: isMobile ? 10 : 16, alignItems: "center", flexWrap: "wrap" }}>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." style={{ ...inputStyle, width: isMobile ? "100%" : 280, padding: "8px 12px" }} />
+            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ ...inputStyle, width: isMobile ? "auto" : 150, padding: "8px 12px", flex: isMobile ? 1 : "none" }}>
+              <option value="All">All Types</option>
+              {types.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            {!isMobile && <div style={{ flex: 1 }} />}
+            <button onClick={() => setShowLog(!showLog)} style={{ padding: "8px 14px", background: showLog ? "#1a1a2e" : "#fff", color: showLog ? "#fff" : "#1a1a2e", border: "1.5px solid #1a1a2e", borderRadius: 6, cursor: "pointer", fontSize: isMobile ? 11 : 13, fontWeight: 500, flex: isMobile ? 1 : "none" }}>Log ({changeLog.length})</button>
+            <button onClick={() => setShowAdd(!showAdd)} style={{ padding: "8px 16px", background: "#4CAF50", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: isMobile ? 11 : 13, fontWeight: 600, flex: isMobile ? 1 : "none" }}>+ Add</button>
+          </div>
+
+          {showLog && changeLog.length > 0 && (
+            <div style={{ background: "#fff", border: "1px solid #e0e0e0", borderRadius: 8, padding: 16, marginBottom: 16, maxHeight: 200, overflowY: "auto" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: "#1a1a2e" }}>Recent Changes</div>
+              {changeLog.slice(0, 20).map((log, i) => (
+                <div key={i} style={{ fontSize: 12, padding: "4px 0", borderBottom: i < changeLog.length - 1 ? "1px solid #f0f0f0" : "none", color: "#444" }}>
+                  <span style={{ color: "#999" }}>{log.time}</span> — <strong>{log.account}</strong>: {log.changes.join("; ")}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {showAdd && (
+            <div style={{ background: "#fff", border: "2px solid #4CAF50", borderRadius: 10, padding: 20, marginBottom: 16 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: "#2E7D32" }}>New Account</div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "80px 1fr 120px 120px 100px", gap: 10, marginBottom: 10 }}>
+                {isMobile && <div><label style={{ fontSize: 11, color: "#666" }}>Account Name</label><input value={newAccount.name} onChange={e => setNewAccount(p => ({ ...p, name: e.target.value }))} style={inputStyle} /></div>}
+                <div style={isMobile ? { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 } : {}}>
+                  <div><label style={{ fontSize: 11, color: "#666" }}>Status</label><select value={newAccount.status} onChange={e => setNewAccount(p => ({ ...p, status: e.target.value }))} style={inputStyle}><option>A</option><option>B</option><option>C</option></select></div>
+                  {isMobile && <div><label style={{ fontSize: 11, color: "#666" }}>Amount</label><input type="number" value={newAccount.amount} onChange={e => setNewAccount(p => ({ ...p, amount: e.target.value }))} style={inputStyle} /></div>}
+                  {isMobile && <div><label style={{ fontSize: 11, color: "#666" }}>Likelihood</label><input type="number" step="0.05" min="0" max="1" value={newAccount.likelihood} onChange={e => setNewAccount(p => ({ ...p, likelihood: e.target.value }))} style={inputStyle} /></div>}
+                </div>
+                {!isMobile && <div><label style={{ fontSize: 11, color: "#666" }}>Account Name</label><input value={newAccount.name} onChange={e => setNewAccount(p => ({ ...p, name: e.target.value }))} style={inputStyle} /></div>}
+                <div><label style={{ fontSize: 11, color: "#666" }}>Type</label><select value={newAccount.type} onChange={e => setNewAccount(p => ({ ...p, type: e.target.value }))} style={inputStyle}>{types.map(t => <option key={t}>{t}</option>)}</select></div>
+                {!isMobile && <div><label style={{ fontSize: 11, color: "#666" }}>Amount</label><input type="number" value={newAccount.amount} onChange={e => setNewAccount(p => ({ ...p, amount: e.target.value }))} style={inputStyle} /></div>}
+                {!isMobile && <div><label style={{ fontSize: 11, color: "#666" }}>Likelihood</label><input type="number" step="0.05" min="0" max="1" value={newAccount.likelihood} onChange={e => setNewAccount(p => ({ ...p, likelihood: e.target.value }))} style={inputStyle} /></div>}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+                <div><label style={{ fontSize: 11, color: "#666" }}>Contact</label><input value={newAccount.contact} onChange={e => setNewAccount(p => ({ ...p, contact: e.target.value }))} style={inputStyle} /></div>
+                <div><label style={{ fontSize: 11, color: "#666" }}>Phone</label><input value={newAccount.phone} onChange={e => setNewAccount(p => ({ ...p, phone: e.target.value }))} style={inputStyle} /></div>
+                <div><label style={{ fontSize: 11, color: "#666" }}>Email</label><input value={newAccount.email} onChange={e => setNewAccount(p => ({ ...p, email: e.target.value }))} style={inputStyle} /></div>
+                <div><label style={{ fontSize: 11, color: "#666" }}>Notes</label><input value={newAccount.notes} onChange={e => setNewAccount(p => ({ ...p, notes: e.target.value }))} style={inputStyle} /></div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={addAccount} disabled={!newAccount.name} style={{ padding: "8px 20px", background: newAccount.name ? "#4CAF50" : "#ccc", color: "#fff", border: "none", borderRadius: 6, cursor: newAccount.name ? "pointer" : "default", fontWeight: 600, fontSize: 13 }}>Save</button>
+                <button onClick={() => setShowAdd(false)} style={{ padding: "8px 20px", background: "#fff", color: "#666", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer", fontSize: 13 }}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          <div style={{ background: "#fff", borderRadius: 10, border: "1px solid #e0e0e0", overflow: isMobile ? "auto" : "hidden", WebkitOverflowScrolling: "touch" }}>
+            <table style={{ width: isMobile ? "max-content" : "100%", minWidth: isMobile ? 700 : "auto", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: "#F5F6F8" }}>
+                  {[["status","Status",50],["name","Account",180],["type","Type",80],["amount","Amt",100],["likelihood","%",50],["weighted","Wtd",100],["contact","Contact",150],["progress","Prog",50]].map(([key,label,w]) => (
+                    <th key={key} onClick={() => key !== "weighted" && handleSort(key)} style={{ padding: isMobile ? "8px 8px" : "10px 12px", textAlign: "left", fontWeight: 600, color: "#555", cursor: "pointer", userSelect: "none", width: w, borderBottom: "2px solid #e0e0e0", fontSize: 12, whiteSpace: "nowrap" }}>{label}{sortIcon(key)}</th>
+                  ))}
+                  <th style={{ padding: isMobile ? "8px 8px" : "10px 12px", width: 60, borderBottom: "2px solid #e0e0e0", fontSize: 12, fontWeight: 600, color: "#555" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((acct, idx) => {
+                  const sc = statusColors[acct.status];
+                  const isExp = expandedId === acct.id;
+                  const isEd = editingId === acct.id;
+                  const prev = idx > 0 ? filtered[idx-1].status : null;
+                  const showHdr = acct.status !== prev;
+                  const secLabel = { A: "A List — High Probability", B: "B List — Medium Probability", C: "C List — Early Stage / Prospecting" };
+                  const secAccts = filtered.filter(a => a.status === acct.status);
+                  const secVol = secAccts.reduce((s,a) => s + (a.amount||0), 0);
+                  const secWt = secAccts.reduce((s,a) => s + (a.amount||0)*(a.likelihood||0), 0);
+                  return (
+                    <React.Fragment key={acct.id}>
+                      {showHdr && <tr style={{ background: sc.badge }}><td colSpan={9} style={{ padding: "10px 14px" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>{secLabel[acct.status]||acct.status}</span><span style={{ color: "rgba(255,255,255,0.85)", fontSize: 12, fontWeight: 500 }}>{secAccts.length} accounts{secVol > 0 ? ` — ${fmt(secVol)} volume — ${fmt(Math.round(secWt))} weighted` : ""}</span></div></td></tr>}
+                      <tr onClick={() => !isEd && setExpandedId(isExp ? null : acct.id)} style={{ borderBottom: "1px solid #f0f0f0", cursor: "pointer", background: isExp ? sc.bg : "transparent", transition: "background 0.1s" }} onMouseEnter={e => { if (!isExp) e.currentTarget.style.background = "#FAFBFC" }} onMouseLeave={e => { if (!isExp) e.currentTarget.style.background = "transparent" }}>
+                        <td style={{ padding: "10px 12px" }}><span style={{ display: "inline-block", width: 28, height: 28, borderRadius: "50%", background: sc.badge, color: "#fff", textAlign: "center", lineHeight: "28px", fontWeight: 700, fontSize: 13 }}>{acct.status}</span></td>
+                        <td style={{ padding: "10px 12px", fontWeight: 500, color: "#1a1a2e" }}>{acct.name}</td>
+                        <td style={{ padding: "10px 12px" }}><span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: (typeColors[acct.type]||"#666") + "18", color: typeColors[acct.type]||"#666", fontWeight: 500 }}>{acct.type}</span></td>
+                        <td style={{ padding: "10px 12px", fontWeight: 500 }}>{fmt(acct.amount)}</td>
+                        <td style={{ padding: "10px 12px", textAlign: "center" }}>{pct(acct.likelihood)}</td>
+                        <td style={{ padding: "10px 12px", fontWeight: 600, color: sc.text }}>{acct.amount && acct.likelihood ? fmt(Math.round(acct.amount * acct.likelihood)) : "—"}</td>
+                        <td style={{ padding: "10px 12px", color: "#444" }}>{acct.contact || "—"}</td>
+                        <td style={{ padding: "10px 12px", textAlign: "center" }}>{acct.progress || "—"}</td>
+                        <td style={{ padding: "10px 12px" }} onClick={e => e.stopPropagation()}><button onClick={() => startEdit(acct)} style={{ padding: "4px 10px", fontSize: 11, background: "#fff", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer", color: "#555" }}>Edit</button></td>
+                      </tr>
+                      {(isExp || isEd) && (
+                        <tr style={{ background: sc.bg }}><td colSpan={9} style={{ padding: "16px 20px" }}>
+                          {isEd ? (
+                            <div>
+                              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "80px 1fr 130px 130px 100px", gap: 10, marginBottom: 10 }}>
+                                <div><label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 2 }}>Status</label><select value={editData.status} onChange={e => setEditData(p => ({ ...p, status: e.target.value }))} style={inputStyle}><option>A</option><option>B</option><option>C</option></select></div>
+                                <div><label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 2 }}>Account</label><input value={editData.name} onChange={e => setEditData(p => ({ ...p, name: e.target.value }))} style={inputStyle} /></div>
+                                <div><label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 2 }}>Amount</label><input type="number" value={editData.amount||""} onChange={e => setEditData(p => ({ ...p, amount: e.target.value }))} style={inputStyle} /></div>
+                                <div><label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 2 }}>Likelihood (0-1)</label><input type="number" step="0.05" value={editData.likelihood||""} onChange={e => setEditData(p => ({ ...p, likelihood: e.target.value }))} style={inputStyle} /></div>
+                                <div><label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 2 }}>Progress</label><input type="number" min="1" max="10" value={editData.progress||""} onChange={e => setEditData(p => ({ ...p, progress: e.target.value }))} style={inputStyle} /></div>
+                              </div>
+                              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+                                <div><label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 2 }}>Contact</label><input value={editData.contact} onChange={e => setEditData(p => ({ ...p, contact: e.target.value }))} style={inputStyle} /></div>
+                                <div><label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 2 }}>Contact 2</label><input value={editData.contact2} onChange={e => setEditData(p => ({ ...p, contact2: e.target.value }))} style={inputStyle} /></div>
+                                <div><label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 2 }}>Phone</label><input value={editData.phone} onChange={e => setEditData(p => ({ ...p, phone: e.target.value }))} style={inputStyle} /></div>
+                                <div><label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 2 }}>Email</label><input value={editData.email} onChange={e => setEditData(p => ({ ...p, email: e.target.value }))} style={inputStyle} /></div>
+                              </div>
+                              <div style={{ marginBottom: 12 }}><label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 2 }}>Notes</label><textarea value={editData.notes} onChange={e => setEditData(p => ({ ...p, notes: e.target.value }))} rows={2} style={{ ...inputStyle, resize: "vertical" }} /></div>
+                              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                <button onClick={saveEdit} style={{ padding: "7px 18px", background: sc.badge, color: "#fff", border: "none", borderRadius: 5, cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Save Changes</button>
+                                <button onClick={() => { setEditingId(null); setEditData({}); setConfirmDeleteId(null); }} style={{ padding: "7px 18px", background: "#fff", color: "#666", border: "1px solid #ddd", borderRadius: 5, cursor: "pointer", fontSize: 13 }}>Cancel</button>
+                                <div style={{ flex: 1 }} />
+                                {confirmDeleteId === acct.id ? (
+                                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}><span style={{ fontSize: 12, color: "#C62828", fontWeight: 500 }}>Delete this account?</span><button onClick={() => deleteAccount(acct.id)} style={{ padding: "6px 14px", fontSize: 12, background: "#C62828", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontWeight: 600 }}>Yes, Delete</button><button onClick={() => setConfirmDeleteId(null)} style={{ padding: "6px 14px", fontSize: 12, background: "#fff", color: "#666", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer" }}>Cancel</button></div>
+                                ) : (
+                                  <button onClick={() => setConfirmDeleteId(acct.id)} style={{ padding: "6px 14px", fontSize: 12, background: "#fff", color: "#C62828", border: "1px solid #EF9A9A", borderRadius: 4, cursor: "pointer", fontWeight: 500 }}>Delete Account</button>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <div style={{ display: "flex", gap: 16, marginBottom: 10, flexWrap: "wrap" }}>
+                                {acct.contact && <div><span style={{ fontSize: 11, color: "#999" }}>Contact:</span> <strong style={{ fontSize: 13 }}>{acct.contact}</strong></div>}
+                                {acct.contact2 && <div><span style={{ fontSize: 11, color: "#999" }}>Contact 2:</span> <strong style={{ fontSize: 13 }}>{acct.contact2}</strong></div>}
+                                {acct.phone && <div><span style={{ fontSize: 11, color: "#999" }}>Phone:</span> <span style={{ fontSize: 13 }}>{acct.phone}</span></div>}
+                                {acct.email && <div><span style={{ fontSize: 11, color: "#999" }}>Email:</span> <span style={{ fontSize: 13 }}>{acct.email}</span></div>}
+                              </div>
+                              {acct.notes && <div style={{ fontSize: 13, color: "#444", background: "rgba(255,255,255,0.7)", padding: "8px 12px", borderRadius: 6, marginBottom: 10 }}><span style={{ fontSize: 11, color: "#999" }}>Notes: </span>{acct.notes}</div>}
+                              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                <span style={{ fontSize: 11, color: "#999", lineHeight: "28px", marginRight: 4 }}>Move to:</span>
+                                {["A","B","C"].filter(s => s !== acct.status).map(s => (
+                                  <button key={s} onClick={e => { e.stopPropagation(); moveStatus(acct.id, s); }} style={{ padding: "4px 14px", fontSize: 12, background: statusColors[s].badge, color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontWeight: 600 }}>{s}</button>
+                                ))}
+                                <div style={{ flex: 1 }} />
+                                {confirmDeleteId === acct.id ? (
+                                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}><span style={{ fontSize: 12, color: "#C62828", fontWeight: 500 }}>Delete this account?</span><button onClick={e => { e.stopPropagation(); deleteAccount(acct.id); }} style={{ padding: "4px 12px", fontSize: 12, background: "#C62828", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontWeight: 600 }}>Yes, Delete</button><button onClick={e => { e.stopPropagation(); setConfirmDeleteId(null); }} style={{ padding: "4px 12px", fontSize: 12, background: "#fff", color: "#666", border: "1px solid #ddd", borderRadius: 4, cursor: "pointer" }}>Cancel</button></div>
+                                ) : (
+                                  <button onClick={e => { e.stopPropagation(); setConfirmDeleteId(acct.id); }} style={{ padding: "4px 12px", fontSize: 12, background: "#fff", color: "#C62828", border: "1px solid #EF9A9A", borderRadius: 4, cursor: "pointer", fontWeight: 500 }}>Delete</button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </td></tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+            {filtered.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "#999" }}>No accounts match your filters</div>}
+          </div>
+          <div style={{ marginTop: 12, fontSize: 12, color: "#999", textAlign: "center" }}>Showing {filtered.length} of {accounts.length} accounts</div>
+        </div>
+      );
+    }
+
+    /* ================================================================
+       MAIN APP
+       ================================================================ */
+    function App() {
+      const isMobile = useIsMobile();
+      const [page, setPage] = useState("todo");
+      const [accounts, setAccounts] = useState(() => {
+        const saved = localStorage.getItem('pipeline_accounts');
+        return saved ? JSON.parse(saved) : initialAccounts;
+      });
+      const [changeLog, setChangeLog] = useState(() => {
+        const saved = localStorage.getItem('pipeline_changeLog');
+        return saved ? JSON.parse(saved) : [];
+      });
+      const [tasks, setTasks] = useState(() => {
+        const saved = localStorage.getItem('pipeline_tasks');
+        return saved ? JSON.parse(saved) : [];
+      });
+      const [prospects, setProspects] = useState(() => {
+        try {
+          const saved = localStorage.getItem('pipeline_prospects');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            return parsed.length > 0 ? parsed : initialProspects;
+          }
+          return initialProspects;
+        } catch(e) { return initialProspects; }
+      });
+
+      useEffect(() => {
+        localStorage.setItem('pipeline_accounts', JSON.stringify(accounts));
+      }, [accounts]);
+
+      useEffect(() => {
+        localStorage.setItem('pipeline_changeLog', JSON.stringify(changeLog));
+      }, [changeLog]);
+
+      useEffect(() => {
+        localStorage.setItem('pipeline_tasks', JSON.stringify(tasks));
+      }, [tasks]);
+
+      useEffect(() => {
+        localStorage.setItem('pipeline_prospects', JSON.stringify(prospects));
+      }, [prospects]);
+
+      // ---- Google Sheets Backup ----
+      const [sheetsUrl, setSheetsUrl] = useState(() => localStorage.getItem('pipeline_sheetsUrl') || '');
+      const [syncStatus, setSyncStatus] = useState('idle'); // idle | syncing | success | error
+      const [showSheetsSetup, setShowSheetsSetup] = useState(false);
+      const syncTimeoutRef = React.useRef(null);
+      const hasMountedRef = React.useRef(false);
+
+      useEffect(() => {
+        localStorage.setItem('pipeline_sheetsUrl', sheetsUrl);
+      }, [sheetsUrl]);
+
+      const syncToSheets = React.useCallback((accts, prosp, tsk, log) => {
+        if (!sheetsUrl) return;
+        setSyncStatus('syncing');
+        const payload = JSON.stringify({
+          accounts: accts,
+          prospects: prosp,
+          tasks: tsk,
+          changeLog: log
+        });
+        fetch(sheetsUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: payload
+        }).then(() => {
+          setSyncStatus('success');
+          setTimeout(() => setSyncStatus('idle'), 3000);
+        }).catch(() => {
+          setSyncStatus('error');
+          setTimeout(() => setSyncStatus('idle'), 5000);
+        });
+      }, [sheetsUrl]);
+
+      // Auto-sync with debounce whenever data changes (skip initial mount)
+      useEffect(() => {
+        if (!hasMountedRef.current) {
+          hasMountedRef.current = true;
+          return;
+        }
+        if (!sheetsUrl) return;
+        if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+        syncTimeoutRef.current = setTimeout(() => {
+          syncToSheets(accounts, prospects, tasks, changeLog);
+        }, 2000); // 2-second debounce
+        return () => { if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current); };
+      }, [accounts, prospects, tasks, changeLog, sheetsUrl, syncToSheets]);
+
+      const syncIndicator = sheetsUrl ? (
+        React.createElement('span', {
+          style: {
+            fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 12,
+            background: syncStatus === 'syncing' ? '#FFF3E0' : syncStatus === 'success' ? '#E8F5E9' : syncStatus === 'error' ? '#FFEBEE' : '#F5F5F5',
+            color: syncStatus === 'syncing' ? '#E65100' : syncStatus === 'success' ? '#2E7D32' : syncStatus === 'error' ? '#C62828' : '#999',
+            marginRight: 8, transition: 'all 0.3s'
+          }
+        }, syncStatus === 'syncing' ? '⟳ Syncing…' : syncStatus === 'success' ? '✓ Synced' : syncStatus === 'error' ? '✗ Sync failed' : '● Connected')
+      ) : null;
+
+      const sheetsSetupModal = showSheetsSetup ? React.createElement('div', {
+        style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 },
+        onClick: (e) => { if (e.target === e.currentTarget) setShowSheetsSetup(false); }
+      },
+        React.createElement('div', { style: { background: '#fff', borderRadius: 16, padding: 32, maxWidth: 520, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' } },
+          React.createElement('h3', { style: { margin: '0 0 8px', fontSize: 20, color: '#1a1a2e' } }, 'Google Sheets Backup'),
+          React.createElement('p', { style: { color: '#666', fontSize: 13, margin: '0 0 20px', lineHeight: 1.5 } },
+            'Paste your Google Apps Script Web App URL below. Every change you make will auto-sync to your Google Sheet.'),
+          React.createElement('input', {
+            type: 'text',
+            placeholder: 'https://script.google.com/macros/s/..../exec',
+            value: sheetsUrl,
+            onChange: (e) => setSheetsUrl(e.target.value),
+            style: { ...inputStyle, width: '100%', marginBottom: 16, fontSize: 13 }
+          }),
+          React.createElement('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end' } },
+            sheetsUrl && React.createElement('button', {
+              onClick: () => { syncToSheets(accounts, prospects, tasks, changeLog); },
+              style: { padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#1a73e8', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }
+            }, 'Sync Now'),
+            sheetsUrl && React.createElement('button', {
+              onClick: () => { setSheetsUrl(''); },
+              style: { padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#fff', color: '#C62828', border: '1.5px solid #C62828', borderRadius: 8, cursor: 'pointer' }
+            }, 'Disconnect'),
+            React.createElement('button', {
+              onClick: () => setShowSheetsSetup(false),
+              style: { padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#f5f5f5', color: '#333', border: 'none', borderRadius: 8, cursor: 'pointer' }
+            }, 'Close')
+          )
+        )
+      ) : null;
+
+      const exportToExcel = () => {
+        if (typeof XLSX === 'undefined') { alert('Excel export library not loaded. Please check your internet connection.'); return; }
+        const wb = XLSX.utils.book_new();
+
+        // Pipeline sheet - sorted A, B, C
+        const statusOrder = { A: 0, B: 1, C: 2 };
+        const sortedAccounts = [...accounts].sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
+        const pipelineData = sortedAccounts.map(a => ({
+          'Status': a.status,
+          'Account Name': a.name,
+          'Type': a.type,
+          'Amount': a.amount || '',
+          'Likelihood': a.likelihood ? Math.round(a.likelihood * 100) + '%' : '',
+          'Weighted': a.amount && a.likelihood ? Math.round(a.amount * a.likelihood) : '',
+          'Contact': a.contact || '',
+          'Contact 2': a.contact2 || '',
+          'Phone': a.phone || '',
+          'Email': a.email || '',
+          'Progress': a.progress || '',
+          'Notes': a.notes || ''
+        }));
+        const ws1 = XLSX.utils.json_to_sheet(pipelineData);
+        ws1['!cols'] = [{wch:8},{wch:35},{wch:12},{wch:12},{wch:10},{wch:12},{wch:25},{wch:25},{wch:18},{wch:25},{wch:8},{wch:40}];
+        XLSX.utils.book_append_sheet(wb, ws1, 'Pipeline');
+
+        // To-Do sheet
+        const todoData = tasks.map(t => {
+          const linkedProspect = t.prospectId ? prospects.find(p => p.id === t.prospectId) : null;
+          return {
+            'Task': t.title,
+            'Date': t.date,
+            'Prospect': linkedProspect ? linkedProspect.name : '',
+            'Notes': t.notes || '',
+            'Completed': t.completed ? 'Yes' : 'No',
+            'Completed At': t.completedAt || ''
+          };
+        });
+        const ws2 = XLSX.utils.json_to_sheet(todoData.length > 0 ? todoData : [{'Task':'','Date':'','Prospect':'','Notes':'','Completed':'','Completed At':''}]);
+        ws2['!cols'] = [{wch:35},{wch:12},{wch:25},{wch:40},{wch:10},{wch:20}];
+        XLSX.utils.book_append_sheet(wb, ws2, 'To-Do');
+
+        // Prospects sheet
+        const prospectData = prospects.map(p => {
+          const row = {
+            'Name': p.name,
+            'Sector': p.sector || '',
+            'Address': p.address || '',
+            'Phone': p.phone || '',
+            'Contact 1': p.contact1 || '',
+            'Contact 2': p.contact2 || '',
+            'Email 1': p.email1 || '',
+            'Email 2': p.email2 || ''
+          };
+          (p.extraContacts || []).forEach((ec, i) => {
+            row['Contact ' + (i + 3)] = ec.name || '';
+            row['Email ' + (i + 3)] = ec.email || '';
+          });
+          row['Notes'] = (p.notes || []).map(n => '[' + n.timestamp + '] ' + n.text).join(' | ');
+          row['Last Contacted'] = p.lastContacted || '';
+          return row;
+        });
+        const ws3 = XLSX.utils.json_to_sheet(prospectData.length > 0 ? prospectData : [{'Name':'','Sector':'','Address':'','Phone':'','Contact 1':'','Contact 2':'','Email 1':'','Email 2':'','Notes':'','Last Contacted':''}]);
+        ws3['!cols'] = [{wch:30},{wch:12},{wch:30},{wch:18},{wch:20},{wch:20},{wch:25},{wch:25},{wch:50},{wch:14}];
+        XLSX.utils.book_append_sheet(wb, ws3, 'Prospects');
+
+        const dateStr = new Date().toISOString().split('T')[0];
+        XLSX.writeFile(wb, `Pipeline_Export_${dateStr}.xlsx`);
+      };
+
+      return (
+        <div style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", maxWidth: 1200, margin: "0 auto", padding: isMobile ? "12px" : "20px", background: "#FAFBFC" }}>
+          {/* Header + Nav */}
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", marginBottom: isMobile ? 16 : 24, gap: isMobile ? 12 : 0 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h1 style={{ fontSize: isMobile ? 20 : 26, fontWeight: 700, color: "#1a1a2e", margin: "0 0 2px" }}>
+                  {page === "prospects" ? "Prospecting" : page === "pipeline" ? "Pipeline" : "To-Do"}
+                </h1>
+                {!isMobile && <p style={{ color: "#666", margin: 0, fontSize: 14 }}>2026 — Will Pancoast</p>}
+              </div>
+              {isMobile && <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                {syncIndicator}
+                <button onClick={() => setShowSheetsSetup(true)} style={{ padding: "6px 10px", fontSize: 11, fontWeight: 600, background: sheetsUrl ? "#E8F5E9" : "#FFF3E0", color: sheetsUrl ? "#2E7D32" : "#E65100", border: sheetsUrl ? "1.5px solid #2E7D32" : "1.5px solid #E65100", borderRadius: 6, cursor: "pointer" }}>{sheetsUrl ? "☁" : "☁ Backup"}</button>
+              </div>}
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              {!isMobile && syncIndicator}
+              {!isMobile && <button onClick={() => setShowSheetsSetup(true)} style={{ padding: "8px 16px", fontSize: 12, fontWeight: 600, background: sheetsUrl ? "#E8F5E9" : "#FFF3E0", color: sheetsUrl ? "#2E7D32" : "#E65100", border: sheetsUrl ? "1.5px solid #2E7D32" : "1.5px solid #E65100", borderRadius: 6, cursor: "pointer" }}>{sheetsUrl ? "☁ Sheets" : "☁ Setup Backup"}</button>}
+              {!isMobile && <button onClick={exportToExcel} style={{ padding: "8px 16px", fontSize: 12, fontWeight: 600, background: "#fff", color: "#1a1a2e", border: "1.5px solid #1a1a2e", borderRadius: 6, cursor: "pointer", marginRight: 12 }}>Export to Excel</button>}
+              <div style={{ display: "flex", gap: isMobile ? 2 : 4, background: "#EEEEF0", borderRadius: 8, padding: 3, flex: isMobile ? 1 : "none" }}>
+                <button onClick={() => setPage("pipeline")} style={{ padding: isMobile ? "10px 0" : "8px 20px", fontSize: 13, fontWeight: 600, background: page === "pipeline" ? "#fff" : "transparent", color: page === "pipeline" ? "#1a1a2e" : "#888", border: "none", borderRadius: 6, cursor: "pointer", boxShadow: page === "pipeline" ? "0 1px 3px rgba(0,0,0,0.1)" : "none", transition: "all 0.15s", flex: isMobile ? 1 : "none" }}>
+                  Pipeline
+                </button>
+                <button onClick={() => setPage("todo")} style={{ padding: isMobile ? "10px 0" : "8px 20px", fontSize: 13, fontWeight: 600, background: page === "todo" ? "#fff" : "transparent", color: page === "todo" ? "#1a1a2e" : "#888", border: "none", borderRadius: 6, cursor: "pointer", boxShadow: page === "todo" ? "0 1px 3px rgba(0,0,0,0.1)" : "none", transition: "all 0.15s", flex: isMobile ? 1 : "none" }}>
+                  To-Do
+                </button>
+                <button onClick={() => setPage("prospects")} style={{ padding: isMobile ? "10px 0" : "8px 20px", fontSize: 13, fontWeight: 600, background: page === "prospects" ? "#fff" : "transparent", color: page === "prospects" ? "#1a1a2e" : "#888", border: "none", borderRadius: 6, cursor: "pointer", boxShadow: page === "prospects" ? "0 1px 3px rgba(0,0,0,0.1)" : "none", transition: "all 0.15s", flex: isMobile ? 1 : "none" }}>
+                  Prospects
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {page === "pipeline" && <PipelinePage accounts={accounts} setAccounts={setAccounts} changeLog={changeLog} setChangeLog={setChangeLog} isMobile={isMobile} />}
+          {page === "todo" && <TodoPage tasks={tasks} setTasks={setTasks} prospects={prospects} setProspects={setProspects} isMobile={isMobile} />}
+          {page === "prospects" && <ProspectingPage prospects={prospects} setProspects={setProspects} tasks={tasks} setTasks={setTasks} isMobile={isMobile} />}
+          {sheetsSetupModal}
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
