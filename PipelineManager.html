@@ -1453,6 +1453,41 @@
         });
       }, [sheetsUrl]);
 
+      const [restoreStatus, setRestoreStatus] = useState('idle'); // idle | loading | success | error
+
+      const restoreFromSheets = React.useCallback(() => {
+        if (!sheetsUrl) return;
+        if (!confirm('This will replace ALL local data with data from Google Sheets. Continue?')) return;
+        setRestoreStatus('loading');
+        setSyncStatus('syncing');
+        const restoreUrl = sheetsUrl + (sheetsUrl.includes('?') ? '&' : '?') + 'action=restore';
+        fetch(restoreUrl, { redirect: 'follow' })
+          .then(res => res.json())
+          .then(data => {
+            if (data.status === 'success') {
+              if (data.tasks && data.tasks.length > 0) setTasks(data.tasks);
+              if (data.accounts && data.accounts.length > 0) setAccounts(data.accounts);
+              if (data.prospects && data.prospects.length > 0) setProspects(data.prospects);
+              if (data.changeLog && data.changeLog.length > 0) setChangeLog(data.changeLog);
+              setRestoreStatus('success');
+              setSyncStatus('success');
+              setTimeout(() => { setRestoreStatus('idle'); setSyncStatus('idle'); }, 3000);
+              alert('Data restored from Google Sheets! ' +
+                (data.tasks ? data.tasks.length + ' tasks, ' : '') +
+                (data.accounts ? data.accounts.length + ' accounts, ' : '') +
+                (data.prospects ? data.prospects.length + ' prospects' : ''));
+            } else {
+              throw new Error(data.message || 'Unknown error');
+            }
+          })
+          .catch(err => {
+            setRestoreStatus('error');
+            setSyncStatus('error');
+            setTimeout(() => { setRestoreStatus('idle'); setSyncStatus('idle'); }, 5000);
+            alert('Restore failed: ' + err.message + '\n\nMake sure you have updated your Apps Script with the latest version that supports restore.');
+          });
+      }, [sheetsUrl]);
+
       // Auto-sync with debounce whenever data changes (skip initial mount)
       useEffect(() => {
         if (!hasMountedRef.current) {
@@ -1485,7 +1520,7 @@
         React.createElement('div', { style: { background: '#fff', borderRadius: 16, padding: 32, maxWidth: 520, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' } },
           React.createElement('h3', { style: { margin: '0 0 8px', fontSize: 20, color: '#1a1a2e' } }, 'Google Sheets Backup'),
           React.createElement('p', { style: { color: '#666', fontSize: 13, margin: '0 0 20px', lineHeight: 1.5 } },
-            'Paste your Google Apps Script Web App URL below. Every change you make will auto-sync to your Google Sheet.'),
+            'Paste your Google Apps Script Web App URL below. Changes auto-sync to your Google Sheet. Use "Restore" to pull data from the Sheet to this device.'),
           React.createElement('input', {
             type: 'text',
             placeholder: 'https://script.google.com/macros/s/..../exec',
@@ -1493,11 +1528,16 @@
             onChange: (e) => setSheetsUrl(e.target.value),
             style: { ...inputStyle, width: '100%', marginBottom: 16, fontSize: 13 }
           }),
-          React.createElement('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end' } },
+          React.createElement('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' } },
+            sheetsUrl && React.createElement('button', {
+              onClick: restoreFromSheets,
+              disabled: restoreStatus === 'loading',
+              style: { padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#E8F5E9', color: '#2E7D32', border: '1.5px solid #2E7D32', borderRadius: 8, cursor: restoreStatus === 'loading' ? 'wait' : 'pointer', opacity: restoreStatus === 'loading' ? 0.6 : 1 }
+            }, restoreStatus === 'loading' ? 'Restoring…' : 'Restore from Sheets'),
             sheetsUrl && React.createElement('button', {
               onClick: () => { syncToSheets(accounts, prospects, tasks, changeLog); },
               style: { padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#1a73e8', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }
-            }, 'Sync Now'),
+            }, 'Backup Now'),
             sheetsUrl && React.createElement('button', {
               onClick: () => { setSheetsUrl(''); },
               style: { padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#fff', color: '#C62828', border: '1.5px solid #C62828', borderRadius: 8, cursor: 'pointer' }
